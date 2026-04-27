@@ -1,0 +1,24 @@
+{
+  "name": "auto-read-story-wa-jauhariel",
+  "version": "3.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index"
+  },
+  "keywords": [
+    "auto-read-story",
+    "whatsapp-bot",
+    "whatsapp-status-viewer",
+    "auto-view-whatsapp-story",
+    "bot-whatsapp"
+  ],
+  "author": "github.com/jauhariel",
+  "license": "ISC",
+  "description": "Auto Read Story/Status WhatsApp adalah bot sederhana yang memungkinkan kamu untuk melihat status/story teman-teman WhatsApp secara otomatis, sehingga kamu menjadi orang pertama yang melihat story mereka.",
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "colors": "^1.4.0",
+    "moment-timezone": "^0.5.47",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

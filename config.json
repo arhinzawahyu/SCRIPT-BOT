@@ -1,0 +1,16 @@
+{
+    "autoReadStatus": false,
+    "autoLikeStatus": false,
+    "downloadMediaStatus": false,
+    "sensorNomor": true,
+    "antiTelpon": false,
+    "autoKickStory": false,
+    "blackList": [
+    ],
+    "whiteList": [],
+    "emojis": [
+        "💚",
+        "👍",
+        "🙏"
+    ]
+}
