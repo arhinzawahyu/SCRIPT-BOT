@@ -1207,7 +1207,8 @@ Perintah AI Gemini (lowercase human):
 \`HAHAHA\` (reply chat) -> AI OFF untuk nomor itu
 \`#add aiwhitelist 628xxx\` tambah nomor yang boleh dibales ai
 \`#on ai\` / \`#off ai\` global on/off
-Isi apikey di config.json geminiApiKey`
+\`#set apikey AIza...\` / \`#apikey AIza...\` set key langsung dari WA
+\`#info\` cek key kepasang (masked)`
           );
           break;
 
@@ -1220,7 +1221,38 @@ Isi apikey di config.json geminiApiKey`
           await handleViewOnce(sock, msg, myJid, reply);
           break;
 
+        case "set":
+        case "setkey":
+        case "setapikey":
+        case "apikey":
+        case "gemini": {
+          const raw = msg.args.join("|").trim();
+          const key = raw.split(" ").pop().trim();
+          const sub = msg.args[0]?.trim().toLowerCase();
+          // format: #set apikey AIza... atau #set gemini AIza... atau #apikey AIza...
+          let newKey = "";
+          if (msg.cmd === "apikey" || msg.cmd === "gemini") newKey = msg.args.join(" ").trim().split(" ").pop();
+          else if (sub === "apikey" || sub === "gemini" || sub === "key") newKey = raw.replace(/^(apikey|gemini|key)\s+/i, "").trim();
+          else newKey = key;
+
+          if (!newKey || newKey.length < 20) {
+            await reply(`cara pakai:\n\`#set apikey AIzaSy...\`\n\`#apikey AIzaSy...\`\n\nambil key gratis di https://aistudio.google.com/api-keys\n\nkey sekarang: ${geminiApiKey ? geminiApiKey.slice(0,8)+"****"+geminiApiKey.slice(-4) : "belum diisi"}`);
+            break;
+          }
+          if (!newKey.startsWith("AIza")) {
+            await reply(`key tidak valid, harus diawali AIza...\ncontoh: #set apikey AIzaSy...`);
+            break;
+          }
+          geminiApiKey = newKey;
+          updateConfig("geminiApiKey", newKey);
+          logCuy(`API Key Gemini diupdate`, "green");
+          logInfoToFile(`gemini key updated`);
+          await reply(`api key gemini berhasil disimpan: ${newKey.slice(0,8)}****${newKey.slice(-4)}\nmodel: ${geminiModel}\n\ntest: reply chat dengan oalah`);
+          break;
+        }
+
         case "info": {
+          const maskedKey = geminiApiKey ? geminiApiKey.slice(0,8)+"****"+geminiApiKey.slice(-4) : "belum diisi (pakai #set apikey AIza...)";
           const infoMessage = `Informasi Status Fitur:
           - Auto Read Status: ${autoReadStatus ? "*Aktif*" : "*Nonaktif*"}
           - Auto Like Status: ${autoLikeStatus ? "*Aktif*" : "*Nonaktif*"}
@@ -1229,7 +1261,7 @@ Isi apikey di config.json geminiApiKey`
           - Anti Telpon: ${antiTelpon ? "*Aktif*" : "*Nonaktif*"}
           - Auto Kick tag Story: ${autoKickStory ? "*Aktif*" : "*Nonaktif*"}
           - Auto ViewOnce: ${autoViewOnce ? "*Aktif* (auto forward tanpa trigger)" : "*Nonaktif* (pakai .vo/cantik)"}
-          - AI Gemini: ${aiEnabled ? "*Aktif*" : "*Nonaktif*"} | AI Active: ${aiActiveChats.size} chat | Model: ${geminiModel}`;
+          - AI Gemini: ${aiEnabled ? "*Aktif*" : "*Nonaktif*"} | Key: ${maskedKey} | Active: ${aiActiveChats.size} chat | Model: ${geminiModel}`;
 
           const formatList = (list) =>
             list.map((number) => `\u25CF ${sensorNum(number)}`).join("\n");
@@ -1245,7 +1277,7 @@ Isi apikey di config.json geminiApiKey`
             emojis.length > 0 ? `Emojis:\n${formatEmojiList(emojis)}` : "Emojis kosong.";
           const aiActiveMessage = aiActiveChats.size > 0 ? `AI Active Chats:\n${Array.from(aiActiveChats.keys()).map(j=>`\u25CF ${sensorNum(j.split("@")[0])}`).join("\n")}` : "AI Active kosong.";
 
-          const listMessage = `\n\n${blacklistMessage}\n\n${whitelistMessage}\n\n${aiWhitelistMessage}\n\n${aiActiveMessage}\n\n${emojisMessage}\n\nKetik \`#add aiwhitelist nomornya\` untuk ai\nKetik \`#add\` untuk blacklist/whitelist\nKetik \`#on ai\` / \`#off ai\` untuk AI\nKetik \`oalah\` (reply chat) untuk ON ai di chat itu, \`HAHAHA\` untuk OFF`;
+          const listMessage = `\n\n${blacklistMessage}\n\n${whitelistMessage}\n\n${aiWhitelistMessage}\n\n${aiActiveMessage}\n\n${emojisMessage}\n\nKetik \`#set apikey AIza...\` untuk set key gemini\nKetik \`#add aiwhitelist nomornya\` untuk ai\nKetik \`#on ai\` / \`#off ai\` untuk AI\nKetik \`oalah\` (reply chat) untuk ON ai, \`HAHAHA\` untuk OFF`;
 
           await reply(infoMessage + listMessage);
           break;
