@@ -43,6 +43,15 @@ if (typeof aiEnabled === "undefined") { aiEnabled = true; config.aiEnabled = tru
 if (!Array.isArray(aiWhitelist)) { aiWhitelist = []; config.aiWhitelist = []; }
 if (typeof geminiApiKey === "undefined") { geminiApiKey = ""; config.geminiApiKey = ""; }
 if (typeof geminiModel === "undefined") { geminiModel = "gemini-1.5-flash"; config.geminiModel = "gemini-1.5-flash"; }
+// baca key dari gemini.key (di-ignore git) biar tidak ke-push
+const GEMINI_KEY_PATH = path.join(__dirname, "gemini.key");
+try {
+  if (fs.existsSync(GEMINI_KEY_PATH)) {
+    const k = fs.readFileSync(GEMINI_KEY_PATH, "utf-8").trim();
+    if (k) geminiApiKey = k;
+  }
+  if (process.env.GEMINI_API_KEY) geminiApiKey = process.env.GEMINI_API_KEY.trim();
+} catch (_){}
 let reconnect440Count = 0;
 let last440Time = 0;
 let isConnecting = false;
@@ -1276,12 +1285,14 @@ Perintah AI Gemini (lowercase human):
             await reply(`cara pakai:\n\`#set apikey AIzaSy...\`\n\`#apikey AIzaSy...\`\n\nambil key gratis di https://aistudio.google.com/api-keys\n\nkey sekarang: ${geminiApiKey ? geminiApiKey.slice(0,8)+"****"+geminiApiKey.slice(-4) : "belum diisi"}`);
             break;
           }
-          // allow AQ. etc - jangan strict AIza lagi
+          // allow AQ. etc - simpan ke gemini.key (di-ignore git) biar tidak ke-push
           geminiApiKey = newKey;
-          updateConfig("geminiApiKey", newKey);
-          logCuy(`API Key Gemini diupdate`, "green");
-          logInfoToFile(`gemini key updated`);
-          await reply(`api key gemini berhasil disimpan: ${newKey.slice(0,8)}****${newKey.slice(-4)}\nmodel: ${geminiModel}\n\ntest: reply chat dengan oalah`);
+          try { fs.writeFileSync(GEMINI_KEY_PATH, newKey, "utf-8"); } catch (_){}
+          // kosongkan di config.json biar aman kalau ke-push
+          updateConfig("geminiApiKey", "");
+          logCuy(`API Key Gemini disimpan ke gemini.key (tidak ke-push)`, "green");
+          logInfoToFile(`gemini key saved to gemini.key`);
+          await reply(`api key gemini berhasil disimpan ke gemini.key (aman tidak ke-push): ${newKey.slice(0,8)}****${newKey.slice(-4)}\nmodel: ${geminiModel}\n\ntest: reply chat dengan oalah`);
           break;
         }
 
