@@ -3,7 +3,9 @@
   "version": "3.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index"
+    "start": "node index",
+    "termux": "bash start-termux.sh",
+    "pm2": "pm2 start ecosystem.config.js"
   },
   "keywords": [
     "auto-read-story",
@@ -19,6 +21,7 @@
     "@whiskeysockets/baileys": "latest",
     "colors": "^1.4.0",
     "moment-timezone": "^0.5.47",
+    "pino": "^8.0.0",
     "qrcode-terminal": "^0.12.0"
   }
 }

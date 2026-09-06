@@ -5,6 +5,7 @@
     "sensorNomor": true,
     "antiTelpon": false,
     "autoKickStory": false,
+    "autoViewOnce": true,
     "blackList": [
     ],
     "whiteList": [],
