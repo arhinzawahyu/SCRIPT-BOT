@@ -29,15 +29,26 @@ let {
   antiTelpon,
   autoKickStory,
   autoViewOnce,
+  aiEnabled,
+  aiWhitelist,
+  geminiApiKey,
+  geminiModel,
   blackList,
   whiteList,
   emojis,
 } = config;
-// default true jika belum ada di config lama
+// default
 if (typeof autoViewOnce === "undefined") { autoViewOnce = true; config.autoViewOnce = true; }
+if (typeof aiEnabled === "undefined") { aiEnabled = true; config.aiEnabled = true; }
+if (!Array.isArray(aiWhitelist)) { aiWhitelist = []; config.aiWhitelist = []; }
+if (typeof geminiApiKey === "undefined") { geminiApiKey = ""; config.geminiApiKey = ""; }
+if (typeof geminiModel === "undefined") { geminiModel = "gemini-1.5-flash"; config.geminiModel = "gemini-1.5-flash"; }
 let reconnect440Count = 0;
 let last440Time = 0;
 let isConnecting = false;
+// AI active chats: Map<jid, timeout>
+const aiActiveChats = new Map();
+const AI_TIMEOUT_MS = 15 * 60 * 1000; // 15 menit auto off jika tidak ada chat
 
 function logCuy(message, type = "green") {
   moment.locale("id");
@@ -164,6 +175,47 @@ function getViewOnceContent(quotedMsg) {
     }
   }
   return null;
+}
+
+// ========== GEMINI AI HELPER ==========
+async function callGemini(userMessage, senderName) {
+  if (!geminiApiKey || geminiApiKey.trim() === "") {
+    return "maaf api key gemini belum diisi, isi dulu di config.json geminiApiKey";
+  }
+  const prompt = `kamu adalah teman chat manusia indonesia, jawab santai tanpa huruf kapital sama sekali, jangan pakai kapital di awal kalimat pun, jangan formal, pakai bahasa gaul sehari hari, singkat, kadang typo dikit, jangan pakai tanda baca berlebihan, jangan ngaku ai. nama lawan chat: ${senderName}. balas chat ini: "${userMessage}"`;
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 200 } })
+    });
+    const data = await res.json();
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!text) {
+      logErrorToFile(`gemini empty response: ${JSON.stringify(data).slice(0,500)}`);
+      return "hehe bentar ya lagi error";
+    }
+    // paksa lowercase tanpa kapital + trim
+    text = text.toLowerCase().trim();
+    // hilangkan kapital yang lolos
+    text = text.replace(/^[A-Z]/, m => m.toLowerCase());
+    return text;
+  } catch (e) {
+    logErrorToFile(`gemini error: ${e.message}`);
+    return "aduh error bentar ya";
+  }
+}
+async function sendHumanTyping(sock, jid, text) {
+  try {
+    const len = text.length;
+    const base = Math.min(8000, Math.max(1500, len * 45)); // 45ms per char
+    const jitter = Math.floor(Math.random() * 2000) + 500;
+    const delay = base + jitter;
+    await sock.sendPresenceUpdate("composing", jid);
+    await new Promise(r => setTimeout(r, delay));
+    await sock.sendPresenceUpdate("paused", jid);
+  } catch (_) {}
 }
 
 async function safeDownloadMedia(sock, msg, type, retries = 3) {
@@ -617,10 +669,119 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
       }
     }
 
+    // ========== GEMINI AI TRIGGER OALAH / HAHAHA ==========
+    const cleanText = msg.text.trim().toLowerCase();
+    const cleanRaw = msg.text.trim();
+    // kamu yang trigger: reply chat dengan "oalah" -> AI on untuk nomor itu, "HAHAHA" -> AI off
+    if (msg.key.fromMe) {
+      if (/^oalah$/i.test(cleanText)) {
+        let targetJid = null;
+        let targetNum = null;
+        if (msg.isQuoted && msg.quoted) {
+          // ambil dari quoted (orang yang kamu reply)
+          const qKey = msg.quoted.key || msg.quoted;
+          targetJid = qKey.participant || qKey.remoteJid || msg.key.remoteJid;
+          // untuk private chat, remoteJid sudah nomor orang itu
+          if (msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
+          // kalau reply di grup, ambil participant
+          if (msg.quoted.key?.participant) targetJid = msg.quoted.key.participant;
+          else if (msg.isQuoted && msg.quoted.key?.remoteJid) targetJid = msg.quoted.key.remoteJid;
+        }
+        // fallback: jika tidak reply, pakai remoteJid chat saat itu (private chat)
+        if (!targetJid && msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
+        if (targetJid) {
+          targetNum = targetJid.split("@")[0].split(":")[0];
+          // cek whitelist jika ada
+          if (aiWhitelist.length > 0 && !aiWhitelist.includes(targetNum)) {
+            await sock.sendMessage(myJid, { text: `nomor ${targetNum} belum di whitelist ai. tambah dulu: #add aiwhitelist ${targetNum}` }, { quoted: msg });
+          } else {
+            aiActiveChats.set(targetJid, Date.now() + AI_TIMEOUT_MS);
+            logCuy(`AI ON untuk ${targetJid} (trigger oalah)`, "cyan");
+            logInfoToFile(`AI ON ${targetJid}`);
+            await sock.sendMessage(myJid, { text: `ai on untuk ${targetNum} - semua chat dari dia bakal dibales ai lowercase 15 menit. ketik HAHAHA sambil reply chat dia untuk stop` }, { quoted: msg });
+          }
+        } else {
+          await sock.sendMessage(myJid, { text: `reply chat orangnya dulu baru ketik oalah` }, { quoted: msg });
+        }
+        return;
+      }
+      if (/^hahaha$/i.test(cleanText)) {
+        let targetJid = null;
+        if (msg.isQuoted && msg.quoted?.key) {
+          targetJid = msg.quoted.key.participant || msg.quoted.key.remoteJid;
+          if (msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
+          if (msg.quoted.key.participant) targetJid = msg.quoted.key.participant;
+        }
+        if (!targetJid && msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
+        if (targetJid) {
+          aiActiveChats.delete(targetJid);
+          const num = targetJid.split("@")[0];
+          logCuy(`AI OFF untuk ${targetJid} (trigger HAHAHA)`, "yellow");
+          logInfoToFile(`AI OFF ${targetJid}`);
+          await sock.sendMessage(myJid, { text: `ai off untuk ${num} - stop bales otomatis` }, { quoted: msg });
+        } else {
+          // HAHAHA tanpa reply = matikan semua
+          aiActiveChats.clear();
+          await sock.sendMessage(myJid, { text: `ai off semua chat` }, { quoted: msg });
+        }
+        return;
+      }
+    }
+    // auto balas AI untuk incoming yang sudah di-ON
+    if (!msg.key.fromMe && aiEnabled && aiActiveChats.has(msg.key.remoteJid) && msg.key.remoteJid !== "status@broadcast") {
+      const senderJid = msg.key.remoteJid;
+      const senderNum = senderJid.split("@")[0].split(":")[0];
+      if (aiWhitelist.length > 0 && !aiWhitelist.includes(senderNum)) {
+        logInfoToFile(`AI skip ${senderJid} tidak di whitelist`);
+      } else {
+        // cek timeout
+        const exp = aiActiveChats.get(senderJid);
+        if (exp && Date.now() > exp) {
+          aiActiveChats.delete(senderJid);
+          logCuy(`AI timeout untuk ${senderJid}`, "yellow");
+        } else {
+          // perpanjang timeout tiap ada chat baru
+          aiActiveChats.set(senderJid, Date.now() + AI_TIMEOUT_MS);
+          const senderName = msg.pushName || senderNum;
+          const userText = msg.text || "(media)";
+          if (!geminiApiKey) {
+            await sock.sendMessage(senderJid, { text: "maaf ai belum disetting apikeynya" });
+            return;
+          }
+          logCuy(`AI balas ke ${senderName} (${senderNum}): "${userText}"`, "cyan");
+          logInfoToFile(`AI trigger ${senderJid}: ${userText}`);
+          const aiReply = await callGemini(userText, senderName);
+          await sendHumanTyping(sock, senderJid, aiReply);
+          await sock.sendMessage(senderJid, { text: aiReply });
+          logCuy(`AI terkirim ke ${senderNum}: "${aiReply}"`, "green");
+          return; // jangan lanjut ke handler lain
+        }
+      }
+    }
+    // untuk grup: cek participant juga
+    if (!msg.key.fromMe && aiEnabled && msg.key.remoteJid.includes("@g.us") && msg.key.participant) {
+      const participantJid = msg.key.participant;
+      if (aiActiveChats.has(participantJid)) {
+        const senderNum = participantJid.split("@")[0].split(":")[0];
+        if (aiWhitelist.length === 0 || aiWhitelist.includes(senderNum)) {
+          const exp = aiActiveChats.get(participantJid);
+          if (exp && Date.now() > exp) {
+            aiActiveChats.delete(participantJid);
+          } else {
+            aiActiveChats.set(participantJid, Date.now() + AI_TIMEOUT_MS);
+            const userText = msg.text || "(media grup)";
+            const aiReply = await callGemini(userText, msg.pushName || senderNum);
+            await sendHumanTyping(sock, msg.key.remoteJid, aiReply);
+            await sock.sendMessage(msg.key.remoteJid, { text: aiReply, mentions: [participantJid] });
+            return;
+          }
+        }
+      }
+    }
+
     // ========== FITUR CANTIK & JELEK (TRIGGER TANPA PREFIX) ==========
     // User mau: ketik cantik / cantikk nyooo / cantiknyooo / cantik bgtt dll -> auto ambil viewonce
     // Juga jelek wuu -> sama
-    const cleanText = msg.text.trim().toLowerCase();
     const isCantikTrigger = /^(cantik|jelek)/i.test(cleanText) && msg.key.fromMe;
     // Contoh match: cantik, cantikk, cantiknyooo, cantik bgtt, cantik wuu, jelek, jelekk, jelek wuu
     // Hanya jalan kalau reply ke viewonce
@@ -676,7 +837,7 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
         case "on":
           if (msg.args[0].trim() === "") {
             await reply(
-              `mana argumennya ?\ncontoh ketik : \`#on autolike\`\n\nArgumen yang tersedia:\n\n\`#on autoread\`\nuntuk mengaktifkan fitur autoread story\n\n\`#on autolike\`\nuntuk mengaktifkan fitur autolike story\n\n\`#on dlmedia\`\nuntuk mengaktifkan fitur download media(foto,video, dan audio) dari story\n\n\`#on sensornomor\`\nuntuk mengaktifkan sensor nomor\n\n\`#on antitelpon\`\nuntuk mengaktifkan anti-telpon\n\n\`#on kickstory\`\nuntuk mengaktifkan auto kick story grup\n\n\`#on autovo\`\nuntuk mengaktifkan auto viewonce (langsung forward tanpa trigger)`
+              `mana argumennya ?\ncontoh ketik : \`#on autolike\`\n\nArgumen yang tersedia:\n\n\`#on autoread\`\nuntuk mengaktifkan fitur autoread story\n\n\`#on autolike\`\nuntuk mengaktifkan fitur autolike story\n\n\`#on dlmedia\`\nuntuk mengaktifkan fitur download media(foto,video, dan audio) dari story\n\n\`#on sensornomor\`\nuntuk mengaktifkan sensor nomor\n\n\`#on antitelpon\`\nuntuk mengaktifkan anti-telpon\n\n\`#on kickstory\`\nuntuk mengaktifkan auto kick story grup\n\n\`#on autovo\`\nuntuk mengaktifkan auto viewonce\n\n\`#on ai\`\nuntuk mengaktifkan ai gemini`
             );
           } else {
             for (const arg of msg.args) {
@@ -725,9 +886,16 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
                   logCuy("Kamu mengaktifkan fitur Auto ViewOnce", "blue");
                   await reply("Auto ViewOnce aktif - foto sekali liat langsung auto ke-forward tanpa #vo");
                   break;
+                case "ai":
+                case "gemini":
+                  aiEnabled = true;
+                  updateConfig("aiEnabled", true);
+                  logCuy("Kamu mengaktifkan AI Gemini", "blue");
+                  await reply("AI Gemini aktif - reply chat dengan oalah untuk ON, HAHAHA untuk OFF");
+                  break;
                 default:
                   await reply(
-                    `Argumen tidak valid: ${arg}. Pilihan yang tersedia: autoread, autolike, dlmedia, sensornomor, kickstory, autovo dan antitelpon`
+                    `Argumen tidak valid: ${arg}. Pilihan yang tersedia: autoread, autolike, dlmedia, sensornomor, kickstory, autovo, ai dan antitelpon`
                   );
               }
             }
@@ -737,7 +905,7 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
         case "off":
           if (msg.args[0].trim() === "") {
             await reply(
-              `mana argumennya ?\ncontoh ketik : \`#off autolike\`\n\nArgumen yang tersedia:\n\n\`#off autoread\`\nuntuk menonaktifkan fitur autoread story\n\n\`#off autolike\`\nuntuk menonaktifkan fitur autolike story\n\n\`#off dlmedia\`\nuntuk menonaktifkan fitur download media(foto,video, dan audio) dari story\n\n\`#off sensornomor\`\nuntuk menonaktifkan sensor nomor\n\n\`#off antitelpon\`\nuntuk menonaktifkan anti-telpon\n\n\`#off kickstory\`\nuntuk menonaktifkan auto kick story grup\n\n\`#off autovo\`\nuntuk menonaktifkan auto viewonce`
+              `mana argumennya ?\ncontoh ketik : \`#off autolike\`\n\nArgumen yang tersedia:\n\n\`#off autoread\`\nuntuk menonaktifkan fitur autoread story\n\n\`#off autolike\`\nuntuk menonaktifkan fitur autolike story\n\n\`#off dlmedia\`\nuntuk menonaktifkan fitur download media(foto,video, dan audio) dari story\n\n\`#off sensornomor\`\nuntuk menonaktifkan sensor nomor\n\n\`#off antitelpon\`\nuntuk menonaktifkan anti-telpon\n\n\`#off kickstory\`\nuntuk menonaktifkan auto kick story grup\n\n\`#off autovo\`\nuntuk menonaktifkan auto viewonce\n\n\`#off ai\`\nuntuk menonaktifkan ai gemini`
             );
           } else {
             for (const arg of msg.args) {
@@ -786,9 +954,17 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
                   logCuy("Kamu mematikan fitur Auto ViewOnce", "blue");
                   await reply("Auto ViewOnce nonaktif - harus pakai .vo / cantik manual");
                   break;
+                case "ai":
+                case "gemini":
+                  aiEnabled = false;
+                  updateConfig("aiEnabled", false);
+                  aiActiveChats.clear();
+                  logCuy("Kamu mematikan AI Gemini", "blue");
+                  await reply("AI Gemini nonaktif");
+                  break;
                 default:
                   await reply(
-                    `Argumen tidak valid: ${arg}. Pilihan yang tersedia: autoread, autolike, dlmedia, sensornomor, kickstory, autovo dan antitelpon`
+                    `Argumen tidak valid: ${arg}. Pilihan yang tersedia: autoread, autolike, dlmedia, sensornomor, kickstory, autovo, ai dan antitelpon`
                   );
               }
             }
@@ -798,7 +974,7 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
         case "add":
           if (msg.args[0].trim() === "") {
             await reply(
-              `mana argumennya ?\ncontoh ketik :\n\`#add blacklist 628123456789\`\n\nArgumen yang tersedia:\n\n\`#add blacklist nomornya\`\nuntuk menambahkan nomor ke blacklist\n\n\`#add whitelist nomornya\`\nuntuk menambahkan nomor ke whitelist\n\n\`#add emojis emojinya\`\nuntuk menambahkan emoji ke daftar emojis`
+              `mana argumennya ?\ncontoh ketik :\n\`#add blacklist 628123456789\`\n\nArgumen yang tersedia:\n\n\`#add blacklist nomornya\`\nuntuk menambahkan nomor ke blacklist\n\n\`#add whitelist nomornya\`\nuntuk menambahkan nomor ke whitelist\n\n\`#add aiwhitelist nomornya\`\nuntuk menambahkan nomor ke whitelist ai (cuma nomor ini yang dibales ai)\n\n\`#add emojis emojinya\`\nuntuk menambahkan emoji ke daftar emojis`
             );
           } else {
             for (const arg of msg.args) {
@@ -846,9 +1022,21 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
                 } else {
                   await reply(`Nomor ${displayNumber} sudah ada di whitelist`);
                 }
+              } else if (list === "aiwhitelist" || list === "ai") {
+                const isValid = await validateNumber("#add", "menambahkan", "ke", data);
+                if (!isValid) continue;
+                const displayNumber = sensorNum(data);
+                if (!aiWhitelist.includes(data)) {
+                  aiWhitelist.push(data);
+                  updateConfig("aiWhitelist", aiWhitelist);
+                  logCuy(`Kamu menambahkan nomor ${displayNumber} ke ai whitelist`, "blue");
+                  await reply(`Nomor ${displayNumber} berhasil ditambahkan ke ai whitelist - cuma nomor ini yang dibales ai`);
+                } else {
+                  await reply(`Nomor ${displayNumber} sudah ada di ai whitelist`);
+                }
               } else {
                 await reply(
-                  `Argumen tidak valid: ${arg}. Pilihan yang tersedia: blacklist, whitelist, emojis`
+                  `Argumen tidak valid: ${arg}. Pilihan yang tersedia: blacklist, whitelist, aiwhitelist, emojis`
                 );
               }
             }
@@ -858,7 +1046,7 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
         case "remove":
           if (msg.args[0].trim() === "") {
             await reply(
-              `mana argumennya ?\ncontoh ketik :\n\`#remove blacklist 628123456789\`\n\nArgumen yang tersedia:\n\n\`#remove blacklist nomornya\`\nuntuk menghapus nomor dari blacklist\n\n\`#remove whitelist nomornya\`\nuntuk menghapus nomor dari whitelist\n\n\`#remove emojis emojinya\`\nuntuk menghapus emoji dari daftar emojis`
+              `mana argumennya ?\ncontoh ketik :\n\`#remove blacklist 628123456789\`\n\nArgumen yang tersedia:\n\n\`#remove blacklist nomornya\`\nuntuk menghapus nomor dari blacklist\n\n\`#remove whitelist nomornya\`\nuntuk menghapus nomor dari whitelist\n\n\`#remove aiwhitelist nomornya\`\nuntuk menghapus nomor dari ai whitelist\n\n\`#remove emojis emojinya\`\nuntuk menghapus emoji dari daftar emojis`
             );
           } else {
             for (const arg of msg.args) {
@@ -918,9 +1106,21 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
                     `Nomor ${displayNumber} tidak ada di whitelist\n\nKetik \`#info\` untuk mengecek daftar nomor yang tersedia`
                   );
                 }
+              } else if (list === "aiwhitelist" || list === "ai") {
+                const isValid = await validateNumber("#remove", "menghapus", "dari", data);
+                if (!isValid) continue;
+                const displayNumber = sensorNum(data);
+                if (aiWhitelist.includes(data)) {
+                  aiWhitelist = aiWhitelist.filter((n) => n !== data);
+                  updateConfig("aiWhitelist", aiWhitelist);
+                  logCuy(`Kamu menghapus nomor ${displayNumber} dari ai whitelist`, "blue");
+                  await reply(`Nomor ${displayNumber} berhasil dihapus dari ai whitelist`);
+                } else {
+                  await reply(`Nomor ${displayNumber} tidak ada di ai whitelist`);
+                }
               } else {
                 await reply(
-                  `Argumen tidak valid: ${arg}. Pilihan yang tersedia: blacklist, whitelist, emojis`
+                  `Argumen tidak valid: ${arg}. Pilihan yang tersedia: blacklist, whitelist, aiwhitelist, emojis`
                 );
               }
             }
@@ -1000,7 +1200,14 @@ Mengambil foto/video/audio sekali liat yang kamu reply
 *Baru auto:* foto sekali liat **langsung auto ke-forward** ke chat kamu tanpa perlu ketik apa pun (bisa dimatikan dengan \`#off autovo\`)
 *Manual:* bisa juga ketik *cantik*, *cantiknyooo*, *cantikk bgtt*, *jelek wuu* sambil reply viewonce -> auto ambil
 \`#on autovo\` aktifkan auto viewonce
-\`#off autovo\` matikan auto (pakai manual .vo/cantik saja)`
+\`#off autovo\` matikan auto
+
+Perintah AI Gemini (lowercase human):
+\`oalah\` (reply chat orang) -> AI ON untuk nomor itu 15 menit (cuma whitelist ai yang dibales)
+\`HAHAHA\` (reply chat) -> AI OFF untuk nomor itu
+\`#add aiwhitelist 628xxx\` tambah nomor yang boleh dibales ai
+\`#on ai\` / \`#off ai\` global on/off
+Isi apikey di config.json geminiApiKey`
           );
           break;
 
@@ -1021,7 +1228,8 @@ Mengambil foto/video/audio sekali liat yang kamu reply
           - Sensor Nomor: ${sensorNomor ? "*Aktif*" : "*Nonaktif*"}
           - Anti Telpon: ${antiTelpon ? "*Aktif*" : "*Nonaktif*"}
           - Auto Kick tag Story: ${autoKickStory ? "*Aktif*" : "*Nonaktif*"}
-          - Auto ViewOnce: ${autoViewOnce ? "*Aktif* (auto forward tanpa trigger)" : "*Nonaktif* (pakai .vo/cantik)"}`;
+          - Auto ViewOnce: ${autoViewOnce ? "*Aktif* (auto forward tanpa trigger)" : "*Nonaktif* (pakai .vo/cantik)"}
+          - AI Gemini: ${aiEnabled ? "*Aktif*" : "*Nonaktif*"} | AI Active: ${aiActiveChats.size} chat | Model: ${geminiModel}`;
 
           const formatList = (list) =>
             list.map((number) => `\u25CF ${sensorNum(number)}`).join("\n");
@@ -1032,10 +1240,12 @@ Mengambil foto/video/audio sekali liat yang kamu reply
             blackList.length > 0 ? `Blacklist:\n${formatList(blackList)}` : "Blacklist kosong.";
           const whitelistMessage =
             whiteList.length > 0 ? `Whitelist:\n${formatList(whiteList)}` : "Whitelist kosong.";
+          const aiWhitelistMessage = aiWhitelist.length > 0 ? `AI Whitelist:\n${formatList(aiWhitelist)}` : "AI Whitelist kosong (semua nomor boleh ai jika di-ON via oalah).";
           const emojisMessage =
             emojis.length > 0 ? `Emojis:\n${formatEmojiList(emojis)}` : "Emojis kosong.";
+          const aiActiveMessage = aiActiveChats.size > 0 ? `AI Active Chats:\n${Array.from(aiActiveChats.keys()).map(j=>`\u25CF ${sensorNum(j.split("@")[0])}`).join("\n")}` : "AI Active kosong.";
 
-          const listMessage = `\n\n${blacklistMessage}\n\n${whitelistMessage}\n\n${emojisMessage}\n\nKetik \`#add\` untuk menambahkan nomor atau emoji ke blacklist, whitelist, dan emojis\nKetik \`#remove\` untuk menghapus nomor atau emoji dari blacklist, whitelist, dan emojis\nKetik \`#on\` untuk mengaktifkan fitur\nKetik \`#off\` untuk menonaktifkan fitur\nKetik \`#menu\` untuk melihat menu perintah yang tersedia`;
+          const listMessage = `\n\n${blacklistMessage}\n\n${whitelistMessage}\n\n${aiWhitelistMessage}\n\n${aiActiveMessage}\n\n${emojisMessage}\n\nKetik \`#add aiwhitelist nomornya\` untuk ai\nKetik \`#add\` untuk blacklist/whitelist\nKetik \`#on ai\` / \`#off ai\` untuk AI\nKetik \`oalah\` (reply chat) untuk ON ai di chat itu, \`HAHAHA\` untuk OFF`;
 
           await reply(infoMessage + listMessage);
           break;
