@@ -35,6 +35,8 @@ let {
 } = config;
 // default true jika belum ada di config lama
 if (typeof autoViewOnce === "undefined") { autoViewOnce = true; config.autoViewOnce = true; }
+let reconnect440Count = 0;
+let last440Time = 0;
 
 function logCuy(message, type = "green") {
   moment.locale("id");
@@ -383,12 +385,27 @@ async function connectToWhatsApp() {
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       logCuy(`Koneksi terputus. Code: ${statusCode} | Reconnect: ${shouldReconnect}`, "yellow");
       logErrorToFile(`connection close code ${statusCode} reconnect=${shouldReconnect} err=${lastDisconnect.error?.message} stack=${lastDisconnect.error?.stack || ""}`);
-      // FIX 440 connectionReplaced = jangan spam 3 detik, kasih delay panjang + warning
+      // FIX 440 connectionReplaced = bisa dobel lokal ATAU sesi WA ketendang
       if (statusCode === 440) {
-        logCuy("⚠️ CODE 440 connectionReplaced = ADA 2 BOT JALAN BARENG pakai sessions sama! Matikan salah satu (pm2 delete all / pkill node) baru jalanin 1 saja.", "red");
-        logCuy("Retry 10 detik... Jika terus 440, hapus sessions & pairing ulang: rm -rf sessions", "yellow");
+        const now = Date.now();
+        if (now - last440Time < 60000) reconnect440Count++; else reconnect440Count = 1;
+        last440Time = now;
+        logCuy(`⚠️ CODE 440 connectionReplaced (${reconnect440Count}x dalam 1 menit)`, "red");
+        if (reconnect440Count >= 3) {
+          logCuy("440 sudah 3x berturut! Kemungkinan: 1) Bot jalan di 2 tempat (Termux + PowerShell) pakai sessions sama, 2) WA HP kamu logout/linked device penuh, 3) sessions korup.", "red");
+          logCuy("SOLUSI: Matikan SEMUA bot dulu (di PowerShell CTRL+C, di Termux pkill node), lalu di 1 tempat saja jalankan. Jika tetap, hapus sessions & pairing ulang:", "yellow");
+          logCuy("  rm -rf sessions && rm -rf sessions_backup && node index.js", "yellow");
+          logCuy("  Lalu di HP: WA > Perangkat Tertaut > hapus linked device lama > pairing lagi", "yellow");
+          logErrorToFile(`440 loop ${reconnect440Count}x - stop auto retry, minta manual fix`);
+          // stop retry biar tidak spam loop, tunggu manual restart
+          return;
+        }
+        logCuy("Cek: pastikan cuma 1 bot jalan (jangan PowerShell + Termux bareng). Retry 10 detik...", "yellow");
         setTimeout(() => connectToWhatsApp(), 10000);
         return;
+      } else {
+        // reset counter kalau bukan 440
+        reconnect440Count = 0;
       }
       if (statusCode === 408 || statusCode === 428) {
         logCuy("Timeout/Connection lost, retry 5 detik...", "yellow");
