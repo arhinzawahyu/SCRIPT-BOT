@@ -46,9 +46,21 @@ if (typeof geminiModel === "undefined") { geminiModel = "gemini-1.5-flash"; conf
 let reconnect440Count = 0;
 let last440Time = 0;
 let isConnecting = false;
-// AI active chats: Map<jid, timeout>
+// AI active chats: Map<jid, timeout> + history
 const aiActiveChats = new Map();
 const AI_TIMEOUT_MS = 15 * 60 * 1000; // 15 menit auto off jika tidak ada chat
+const chatHistory = new Map(); // Map<jid, Array<{role:'user'|'model', text}>>
+const MAX_HISTORY = 20;
+function pushHistory(jid, role, text) {
+  if (!chatHistory.has(jid)) chatHistory.set(jid, []);
+  const arr = chatHistory.get(jid);
+  arr.push({ role, text: text.slice(0,500) });
+  if (arr.length > MAX_HISTORY) arr.shift();
+}
+function getHistoryText(jid) {
+  const arr = chatHistory.get(jid) || [];
+  return arr.map(m => `${m.role}: ${m.text}`).join("\n");
+}
 
 function logCuy(message, type = "green") {
   moment.locale("id");
@@ -178,32 +190,38 @@ function getViewOnceContent(quotedMsg) {
 }
 
 // ========== GEMINI AI HELPER ==========
-async function callGemini(userMessage, senderName) {
+async function callGemini(userMessage, senderName, jid) {
   if (!geminiApiKey || geminiApiKey.trim() === "") {
-    return "maaf api key gemini belum diisi, isi dulu di config.json geminiApiKey";
+    return "maaf api key gemini belum diisi, isi dulu pakai #set apikey AIza...";
   }
-  const prompt = `kamu adalah teman chat manusia indonesia, jawab santai tanpa huruf kapital sama sekali, jangan pakai kapital di awal kalimat pun, jangan formal, pakai bahasa gaul sehari hari, singkat, kadang typo dikit, jangan pakai tanda baca berlebihan, jangan ngaku ai. nama lawan chat: ${senderName}. balas chat ini: "${userMessage}"`;
+  const historyText = getHistoryText(jid);
+  const prompt = `kamu adalah saya, bukan ai. tiru gaya chat saya yang santai, lowercase semua tanpa kapital sama sekali, jangan pakai huruf kapital di awal pun, bahasa gaul indo sehari hari, jangan formal, jangan panjang, maksimal 1-2 kalimat pendek aja kayak chat manusia, kadang typo dikit, jangan ngaku ai, jangan pakai emoji berlebihan.
+
+riwayat chat sebelumnya dengan ${senderName}:
+${historyText || "(belum ada riwayat)"}
+
+chat terbaru dari ${senderName}: "${userMessage}"
+balas sebagai saya, pendek, lowercase, jangan panjang kayak ai:`;
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 200 } })
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 80, topP: 0.9 } })
     });
     const data = await res.json();
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     if (!text) {
       logErrorToFile(`gemini empty response: ${JSON.stringify(data).slice(0,500)}`);
-      return "hehe bentar ya lagi error";
+      return "hehe bentar ya";
     }
-    // paksa lowercase tanpa kapital + trim
-    text = text.toLowerCase().trim();
-    // hilangkan kapital yang lolos
-    text = text.replace(/^[A-Z]/, m => m.toLowerCase());
+    // paksa lowercase + potong jika kepanjangan (max 150 char biar pendek)
+    text = text.toLowerCase().trim().split("\n")[0].trim(); // ambil baris pertama aja biar pendek
+    if (text.length > 150) text = text.slice(0,150).trim();
     return text;
   } catch (e) {
     logErrorToFile(`gemini error: ${e.message}`);
-    return "aduh error bentar ya";
+    return "aduh bentar ya";
   }
 }
 async function sendHumanTyping(sock, jid, text) {
@@ -669,37 +687,41 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
       }
     }
 
+    // simpan history untuk AI (semua chat, biar bisa analisis gaya)
+    if (msg.key.remoteJid !== "status@broadcast" && msg.text) {
+      const histJid = msg.key.participant || msg.key.remoteJid;
+      const role = msg.key.fromMe ? "model" : "user";
+      pushHistory(histJid, role, msg.text);
+      if (msg.key.fromMe) pushHistory(msg.key.remoteJid, role, msg.text);
+    }
     // ========== GEMINI AI TRIGGER OALAH / HAHAHA ==========
     const cleanText = msg.text.trim().toLowerCase();
     const cleanRaw = msg.text.trim();
     // kamu yang trigger: reply chat dengan "oalah" -> AI on untuk nomor itu, "HAHAHA" -> AI off
+    // jika nomor sudah di whitelist, oalah tidak perlu - auto on. tetap sediakan oalah untuk nomor non-whitelist
     if (msg.key.fromMe) {
       if (/^oalah$/i.test(cleanText)) {
         let targetJid = null;
         let targetNum = null;
         if (msg.isQuoted && msg.quoted) {
-          // ambil dari quoted (orang yang kamu reply)
           const qKey = msg.quoted.key || msg.quoted;
           targetJid = qKey.participant || qKey.remoteJid || msg.key.remoteJid;
-          // untuk private chat, remoteJid sudah nomor orang itu
           if (msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
-          // kalau reply di grup, ambil participant
           if (msg.quoted.key?.participant) targetJid = msg.quoted.key.participant;
           else if (msg.isQuoted && msg.quoted.key?.remoteJid) targetJid = msg.quoted.key.remoteJid;
         }
-        // fallback: jika tidak reply, pakai remoteJid chat saat itu (private chat)
         if (!targetJid && msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
         if (targetJid) {
           targetNum = targetJid.split("@")[0].split(":")[0];
-          // cek whitelist jika ada
-          if (aiWhitelist.length > 0 && !aiWhitelist.includes(targetNum)) {
-            await sock.sendMessage(myJid, { text: `nomor ${targetNum} belum di whitelist ai. tambah dulu: #add aiwhitelist ${targetNum}` }, { quoted: msg });
-          } else {
-            aiActiveChats.set(targetJid, Date.now() + AI_TIMEOUT_MS);
-            logCuy(`AI ON untuk ${targetJid} (trigger oalah)`, "cyan");
-            logInfoToFile(`AI ON ${targetJid}`);
-            await sock.sendMessage(myJid, { text: `ai on untuk ${targetNum} - semua chat dari dia bakal dibales ai lowercase 15 menit. ketik HAHAHA sambil reply chat dia untuk stop` }, { quoted: msg });
+          aiActiveChats.set(targetJid, Date.now() + AI_TIMEOUT_MS);
+          // auto masuk whitelist juga biar next tanpa oalah tetap jalan
+          if (!aiWhitelist.includes(targetNum)) {
+            aiWhitelist.push(targetNum);
+            updateConfig("aiWhitelist", aiWhitelist);
           }
+          logCuy(`AI ON untuk ${targetJid} (trigger oalah + auto whitelist)`, "cyan");
+          logInfoToFile(`AI ON ${targetJid}`);
+          await sock.sendMessage(myJid, { text: `ai on untuk ${targetNum} - auto masuk whitelist, chat pendek lowercase kayak kamu. ketik HAHAHA reply untuk stop` }, { quoted: msg });
         } else {
           await sock.sendMessage(myJid, { text: `reply chat orangnya dulu baru ketik oalah` }, { quoted: msg });
         }
@@ -707,75 +729,90 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
       }
       if (/^hahaha$/i.test(cleanText)) {
         let targetJid = null;
+        let targetNum = null;
         if (msg.isQuoted && msg.quoted?.key) {
           targetJid = msg.quoted.key.participant || msg.quoted.key.remoteJid;
           if (msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
           if (msg.quoted.key.participant) targetJid = msg.quoted.key.participant;
+          targetNum = targetJid ? targetJid.split("@")[0] : null;
         }
-        if (!targetJid && msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) targetJid = msg.key.remoteJid;
+        if (!targetJid && msg.key.remoteJid !== myJid && !msg.key.remoteJid.includes("@g.us")) {
+          targetJid = msg.key.remoteJid;
+          targetNum = targetJid.split("@")[0];
+        }
         if (targetJid) {
           aiActiveChats.delete(targetJid);
-          const num = targetJid.split("@")[0];
-          logCuy(`AI OFF untuk ${targetJid} (trigger HAHAHA)`, "yellow");
+          // juga hapus dari whitelist biar tidak auto lagi
+          if (targetNum && aiWhitelist.includes(targetNum)) {
+            aiWhitelist = aiWhitelist.filter(n => n !== targetNum);
+            updateConfig("aiWhitelist", aiWhitelist);
+          }
+          logCuy(`AI OFF untuk ${targetJid} (trigger HAHAHA + hapus whitelist)`, "yellow");
           logInfoToFile(`AI OFF ${targetJid}`);
-          await sock.sendMessage(myJid, { text: `ai off untuk ${num} - stop bales otomatis` }, { quoted: msg });
+          await sock.sendMessage(myJid, { text: `ai off untuk ${targetNum} - dihapus dari whitelist, tidak auto lagi` }, { quoted: msg });
         } else {
-          // HAHAHA tanpa reply = matikan semua
           aiActiveChats.clear();
           await sock.sendMessage(myJid, { text: `ai off semua chat` }, { quoted: msg });
         }
         return;
       }
     }
-    // auto balas AI untuk incoming yang sudah di-ON
-    if (!msg.key.fromMe && aiEnabled && aiActiveChats.has(msg.key.remoteJid) && msg.key.remoteJid !== "status@broadcast") {
+    // auto balas AI: whitelist = langsung auto tanpa oalah, oalah juga bisa
+    const shouldAiReply = !msg.key.fromMe && aiEnabled && msg.key.remoteJid !== "status@broadcast" && (
+      aiWhitelist.includes(msg.key.remoteJid.split("@")[0].split(":")[0]) || aiActiveChats.has(msg.key.remoteJid)
+    );
+    if (shouldAiReply) {
       const senderJid = msg.key.remoteJid;
       const senderNum = senderJid.split("@")[0].split(":")[0];
-      if (aiWhitelist.length > 0 && !aiWhitelist.includes(senderNum)) {
-        logInfoToFile(`AI skip ${senderJid} tidak di whitelist`);
-      } else {
-        // cek timeout
+      // cek timeout untuk yang via oalah
+      if (aiActiveChats.has(senderJid)) {
         const exp = aiActiveChats.get(senderJid);
         if (exp && Date.now() > exp) {
           aiActiveChats.delete(senderJid);
           logCuy(`AI timeout untuk ${senderJid}`, "yellow");
+          // jika masih di whitelist, tetap lanjut walau timeout oalah habis
+          if (!aiWhitelist.includes(senderNum)) return;
         } else {
-          // perpanjang timeout tiap ada chat baru
           aiActiveChats.set(senderJid, Date.now() + AI_TIMEOUT_MS);
-          const senderName = msg.pushName || senderNum;
-          const userText = msg.text || "(media)";
-          if (!geminiApiKey) {
-            await sock.sendMessage(senderJid, { text: "maaf ai belum disetting apikeynya" });
-            return;
-          }
-          logCuy(`AI balas ke ${senderName} (${senderNum}): "${userText}"`, "cyan");
-          logInfoToFile(`AI trigger ${senderJid}: ${userText}`);
-          const aiReply = await callGemini(userText, senderName);
-          await sendHumanTyping(sock, senderJid, aiReply);
-          await sock.sendMessage(senderJid, { text: aiReply });
-          logCuy(`AI terkirim ke ${senderNum}: "${aiReply}"`, "green");
-          return; // jangan lanjut ke handler lain
         }
       }
+      const senderName = msg.pushName || senderNum;
+      const userText = msg.text || "(media)";
+      if (!geminiApiKey) {
+        await sock.sendMessage(senderJid, { text: "maaf ai belum disetting apikeynya, ketik #set apikey AIza..." });
+        return;
+      }
+      // jangan balas jika text kosong/media viewOnce sudah dihandle di atas
+      if (!msg.text || msg.text.trim() === "") return;
+      logCuy(`AI balas ke ${senderName} (${senderNum}): "${userText}"`, "cyan");
+      logInfoToFile(`AI trigger ${senderJid}: ${userText}`);
+      const aiReply = await callGemini(userText, senderName, senderJid);
+      pushHistory(senderJid, "model", aiReply);
+      await sendHumanTyping(sock, senderJid, aiReply);
+      await sock.sendMessage(senderJid, { text: aiReply });
+      logCuy(`AI terkirim ke ${senderNum}: "${aiReply}"`, "green");
+      return;
     }
-    // untuk grup: cek participant juga
+    // untuk grup: cek participant whitelist juga
     if (!msg.key.fromMe && aiEnabled && msg.key.remoteJid.includes("@g.us") && msg.key.participant) {
       const participantJid = msg.key.participant;
-      if (aiActiveChats.has(participantJid)) {
-        const senderNum = participantJid.split("@")[0].split(":")[0];
-        if (aiWhitelist.length === 0 || aiWhitelist.includes(senderNum)) {
-          const exp = aiActiveChats.get(participantJid);
-          if (exp && Date.now() > exp) {
-            aiActiveChats.delete(participantJid);
-          } else {
-            aiActiveChats.set(participantJid, Date.now() + AI_TIMEOUT_MS);
-            const userText = msg.text || "(media grup)";
-            const aiReply = await callGemini(userText, msg.pushName || senderNum);
-            await sendHumanTyping(sock, msg.key.remoteJid, aiReply);
-            await sock.sendMessage(msg.key.remoteJid, { text: aiReply, mentions: [participantJid] });
-            return;
-          }
+      const pNum = participantJid.split("@")[0].split(":")[0];
+      const shouldGroupAi = aiWhitelist.includes(pNum) || aiActiveChats.has(participantJid);
+      if (shouldGroupAi) {
+        const exp = aiActiveChats.get(participantJid);
+        if (exp && Date.now() > exp) {
+          aiActiveChats.delete(participantJid);
+          if (!aiWhitelist.includes(pNum)) return;
+        } else if (aiActiveChats.has(participantJid)) {
+          aiActiveChats.set(participantJid, Date.now() + AI_TIMEOUT_MS);
         }
+        if (!msg.text || msg.text.trim() === "") return;
+        const userText = msg.text || "(media grup)";
+        const aiReply = await callGemini(userText, msg.pushName || pNum, participantJid);
+        pushHistory(participantJid, "model", aiReply);
+        await sendHumanTyping(sock, msg.key.remoteJid, aiReply);
+        await sock.sendMessage(msg.key.remoteJid, { text: aiReply, mentions: [participantJid] });
+        return;
       }
     }
 
