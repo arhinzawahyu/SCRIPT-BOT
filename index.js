@@ -37,6 +37,7 @@ let {
 if (typeof autoViewOnce === "undefined") { autoViewOnce = true; config.autoViewOnce = true; }
 let reconnect440Count = 0;
 let last440Time = 0;
+let isConnecting = false;
 
 function logCuy(message, type = "green") {
   moment.locale("id");
@@ -285,6 +286,12 @@ async function handleViewOnce(sock, msg, myJid, reply) {
 }
 
 async function connectToWhatsApp() {
+  if (isConnecting) { logCuy("Sudah ada percobaan konek, skip duplikat...", "yellow"); return; }
+  isConnecting = true;
+  // tutup sock lama biar tidak bentrok 440
+  try { if (currentSock?.ws) currentSock.ws.close(); } catch (_) {}
+  try { if (currentSock?.end) currentSock.end(); } catch (_) {}
+
   const sessionPath = path.join(__dirname, "sessions");
   const sessionExists =
     fs.existsSync(sessionPath) && fs.readdirSync(sessionPath).length > 0;
@@ -298,14 +305,14 @@ async function connectToWhatsApp() {
     auth: state,
     printQRInTerminal: !useCode,
     defaultQueryTimeoutMs: undefined,
-    keepAliveIntervalMs: 30000,
-    browser: Browsers.macOS("Chrome"), // lebih stabil di Termux daripada Ubuntu
-    shouldSyncHistoryMessage: () => false, // matikan sync history biar ringan di Termux
+    keepAliveIntervalMs: 25000,
+    browser: Browsers.ubuntu("Chrome"), // ganti ke ubuntu biar tidak 440 di beberapa WA
+    shouldSyncHistoryMessage: () => false,
     syncFullHistory: false,
     generateHighQualityLinkPreview: true,
-    markOnlineOnConnect: true,
-    // FIX CLOSED SESSION: jangan retry terlalu agresif
-    retryRequestDelayMs: 1000,
+    markOnlineOnConnect: false, // jangan mark online terus biar tidak dianggap dobel
+    retryRequestDelayMs: 2000,
+    emitOwnEvents: false,
   });
   currentSock = sock;
   lastActiveTime = Date.now();
@@ -379,32 +386,31 @@ async function connectToWhatsApp() {
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
     lastActiveTime = Date.now();
+    if (connection === "close") isConnecting = false;
+    if (connection === "open") isConnecting = false;
 
     if (connection === "close") {
       const statusCode = lastDisconnect.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      logCuy(`Koneksi terputus. Code: ${statusCode} | Reconnect: ${shouldReconnect}`, "yellow");
+      // jangan log 440 berisik lagi, cukup sekali
+      if (statusCode !== 440) {
+        logCuy(`Koneksi terputus. Code: ${statusCode} | Reconnect: ${shouldReconnect}`, "yellow");
+      }
       logErrorToFile(`connection close code ${statusCode} reconnect=${shouldReconnect} err=${lastDisconnect.error?.message} stack=${lastDisconnect.error?.stack || ""}`);
-      // FIX 440 connectionReplaced = bisa dobel lokal ATAU sesi WA ketendang
+      // FIX 440 connectionReplaced = silent handle tanpa spam warning
       if (statusCode === 440) {
         const now = Date.now();
         if (now - last440Time < 60000) reconnect440Count++; else reconnect440Count = 1;
         last440Time = now;
-        logCuy(`⚠️ CODE 440 connectionReplaced (${reconnect440Count}x dalam 1 menit)`, "red");
         if (reconnect440Count >= 3) {
-          logCuy("440 sudah 3x berturut! Kemungkinan: 1) Bot jalan di 2 tempat (Termux + PowerShell) pakai sessions sama, 2) WA HP kamu logout/linked device penuh, 3) sessions korup.", "red");
-          logCuy("SOLUSI: Matikan SEMUA bot dulu (di PowerShell CTRL+C, di Termux pkill node), lalu di 1 tempat saja jalankan. Jika tetap, hapus sessions & pairing ulang:", "yellow");
-          logCuy("  rm -rf sessions && rm -rf sessions_backup && node index.js", "yellow");
-          logCuy("  Lalu di HP: WA > Perangkat Tertaut > hapus linked device lama > pairing lagi", "yellow");
-          logErrorToFile(`440 loop ${reconnect440Count}x - stop auto retry, minta manual fix`);
-          // stop retry biar tidak spam loop, tunggu manual restart
-          return;
+          logCuy("Koneksi 440 3x - sessions mungkin dobel/korup. Hapus sessions & pairing ulang 1x saja:", "red");
+          logCuy("  rm -rf sessions && node index.js  (di HP hapus Perangkat Tertaut lama)", "yellow");
+          return; // stop biar tidak loop spam
         }
-        logCuy("Cek: pastikan cuma 1 bot jalan (jangan PowerShell + Termux bareng). Retry 10 detik...", "yellow");
+        // retry diam-diam tanpa warning panjang
         setTimeout(() => connectToWhatsApp(), 10000);
         return;
       } else {
-        // reset counter kalau bukan 440
         reconnect440Count = 0;
       }
       if (statusCode === 408 || statusCode === 428) {
