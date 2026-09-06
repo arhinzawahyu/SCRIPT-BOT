@@ -382,7 +382,19 @@ async function connectToWhatsApp() {
       const statusCode = lastDisconnect.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       logCuy(`Koneksi terputus. Code: ${statusCode} | Reconnect: ${shouldReconnect}`, "yellow");
-      logErrorToFile(`connection close code ${statusCode} reconnect=${shouldReconnect} err=${lastDisconnect.error?.message}`);
+      logErrorToFile(`connection close code ${statusCode} reconnect=${shouldReconnect} err=${lastDisconnect.error?.message} stack=${lastDisconnect.error?.stack || ""}`);
+      // FIX 440 connectionReplaced = jangan spam 3 detik, kasih delay panjang + warning
+      if (statusCode === 440) {
+        logCuy("⚠️ CODE 440 connectionReplaced = ADA 2 BOT JALAN BARENG pakai sessions sama! Matikan salah satu (pm2 delete all / pkill node) baru jalanin 1 saja.", "red");
+        logCuy("Retry 10 detik... Jika terus 440, hapus sessions & pairing ulang: rm -rf sessions", "yellow");
+        setTimeout(() => connectToWhatsApp(), 10000);
+        return;
+      }
+      if (statusCode === 408 || statusCode === 428) {
+        logCuy("Timeout/Connection lost, retry 5 detik...", "yellow");
+        setTimeout(() => connectToWhatsApp(), 5000);
+        return;
+      }
       if (shouldReconnect) {
         logCuy("Mencoba menghubungkan ulang dalam 3 detik...\n", "cyan");
         setTimeout(() => connectToWhatsApp(), 3000);
