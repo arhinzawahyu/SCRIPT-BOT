@@ -797,18 +797,19 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
       const senderName = msg.pushName || senderNum;
       const userText = msg.text || "(media)";
       if (!geminiApiKey) {
-        await sock.sendMessage(senderJid, { text: "maaf ai belum disetting apikeynya, ketik #set apikey AIza..." });
+        await sock.sendMessage(myJid, { text: `ai error: apikey belum diisi untuk ${senderName} (${senderNum}) chat: "${userText}"` });
         return;
       }
-      // jangan balas jika text kosong/media viewOnce sudah dihandle di atas
       if (!msg.text || msg.text.trim() === "") return;
-      logCuy(`AI balas ke ${senderName} (${senderNum}): "${userText}"`, "cyan");
+      logCuy(`AI draft untuk ${senderName} (${senderNum}): "${userText}"`, "cyan");
       logInfoToFile(`AI trigger ${senderJid}: ${userText}`);
       const aiReply = await callGemini(userText, senderName, senderJid);
       pushHistory(senderJid, "model", aiReply);
-      await sendHumanTyping(sock, senderJid, aiReply);
-      await sock.sendMessage(senderJid, { text: aiReply });
-      logCuy(`AI terkirim ke ${senderNum}: "${aiReply}"`, "green");
+      // forward ke diri sendiri, bukan langsung ke pengirim
+      const draftText = `💬 draft ai untuk *${senderName}* (${senderNum}):\nchat dia: "${userText}"\n\nbalasan ai (lowercase):\n${aiReply}\n\ncopy untuk kirim manual atau ketik HAHAHA untuk stop`;
+      await sock.sendMessage(myJid, { text: draftText });
+      // error juga sudah ke myJid, kalau aiReply mengandung error apikey/limit juga ke myJid
+      logCuy(`AI draft terkirim ke diri sendiri untuk ${senderNum}: "${aiReply}"`, "green");
       return;
     }
     // untuk grup: cek participant whitelist juga
@@ -828,8 +829,8 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
         const userText = msg.text || "(media grup)";
         const aiReply = await callGemini(userText, msg.pushName || pNum, participantJid);
         pushHistory(participantJid, "model", aiReply);
-        await sendHumanTyping(sock, msg.key.remoteJid, aiReply);
-        await sock.sendMessage(msg.key.remoteJid, { text: aiReply, mentions: [participantJid] });
+        const draftGrup = `💬 draft ai grup *${msg.key.remoteJid}* dari ${pNum}:\nchat: "${userText}"\n\nbalasan:\n${aiReply}`;
+        await sock.sendMessage(myJid, { text: draftGrup });
         return;
       }
     }
