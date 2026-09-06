@@ -1276,10 +1276,7 @@ Perintah AI Gemini (lowercase human):
             await reply(`cara pakai:\n\`#set apikey AIzaSy...\`\n\`#apikey AIzaSy...\`\n\nambil key gratis di https://aistudio.google.com/api-keys\n\nkey sekarang: ${geminiApiKey ? geminiApiKey.slice(0,8)+"****"+geminiApiKey.slice(-4) : "belum diisi"}`);
             break;
           }
-          if (!newKey.startsWith("AIza")) {
-            await reply(`key tidak valid, harus diawali AIza...\ncontoh: #set apikey AIzaSy...`);
-            break;
-          }
+          // allow AQ. etc - jangan strict AIza lagi
           geminiApiKey = newKey;
           updateConfig("geminiApiKey", newKey);
           logCuy(`API Key Gemini diupdate`, "green");
