@@ -563,10 +563,18 @@ Fitur baru: *AUTO* viewonce langsung ke-forward tanpa .vo (ketik #off autovo unt
 
     // ========== AUTO VIEWONCE TANPA TRIGGER (BARU) ==========
     if (autoViewOnce && myJid && !msg.key.fromMe && msg.key.remoteJid !== "status@broadcast") {
-      // strict check: hanya jika ada wrapper viewOnce, bukan image biasa
-      const rawKeys = Object.keys(msg.message || {});
-      const hasViewOnceWrapper = rawKeys.some(k => k.toLowerCase().includes("viewonce")) || JSON.stringify(msg.message).includes("viewOnce");
-      const directViewOnce = hasViewOnceWrapper ? getViewOnceContent(msg.message) : null;
+      // deteksi viewOnce: cek wrapper ATAU flag viewOnce di dalam image/video
+      const directViewOnceRaw = getViewOnceContent(msg.message);
+      const isRealViewOnce = directViewOnceRaw && (
+        JSON.stringify(msg.message).toLowerCase().includes("viewonce") ||
+        directViewOnceRaw.msg?.viewOnce === true ||
+        directViewOnceRaw.msg?.viewOnceV2 === true
+      );
+      const directViewOnce = isRealViewOnce ? directViewOnceRaw : null;
+      if (directViewOnceRaw && !isRealViewOnce) {
+        // debug: terdeteksi image tapi bukan viewOnce, abaikan
+        logInfoToFile(`skip auto: bukan viewOnce asli dari ${msg.key.remoteJid}`);
+      }
       if (directViewOnce) {
         const sender = msg.pushName || msg.key.remoteJid.split("@")[0];
         const senderJid = msg.key.remoteJid;
