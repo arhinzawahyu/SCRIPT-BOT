@@ -219,18 +219,27 @@ balas sebagai saya, pendek, lowercase, jangan panjang kayak ai:`;
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 80, topP: 0.9 } })
     });
     const data = await res.json();
+    if (data.error) {
+      const errMsg = data.error.message || JSON.stringify(data.error);
+      logErrorToFile(`gemini api error: ${errMsg}`);
+      // jangan bales hehe doang - kasih tau penyebab biar bisa fix
+      if (errMsg.includes("API_KEY_INVALID") || errMsg.includes("API key")) return "apikeynya salah atau belum aktif, cek lagi di aistudio";
+      if (errMsg.includes("quota") || errMsg.includes("429")) return "limit gemini habis, coba lagi bentar";
+      return `error gemini: ${errMsg.slice(0,100).toLowerCase()}`;
+    }
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     if (!text) {
-      logErrorToFile(`gemini empty response: ${JSON.stringify(data).slice(0,500)}`);
-      return "hehe bentar ya";
+      logErrorToFile(`gemini empty: ${JSON.stringify(data).slice(0,800)}`);
+      // coba fallback tanpa history kalau kosong
+      return "iya bentar ya lagi mikir";
     }
-    // paksa lowercase + potong jika kepanjangan (max 150 char biar pendek)
-    text = text.toLowerCase().trim().split("\n")[0].trim(); // ambil baris pertama aja biar pendek
+    text = text.toLowerCase().trim().split("\n")[0].trim();
     if (text.length > 150) text = text.slice(0,150).trim();
+    // jangan bales hehe generic kalau ada text asli
     return text;
   } catch (e) {
-    logErrorToFile(`gemini error: ${e.message}`);
-    return "aduh bentar ya";
+    logErrorToFile(`gemini fetch error: ${e.message} ${e.stack||""}`);
+    return `aduh error: ${e.message.slice(0,80).toLowerCase()}`;
   }
 }
 async function sendHumanTyping(sock, jid, text) {
