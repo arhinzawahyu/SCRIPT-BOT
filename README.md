@@ -14,7 +14,3 @@ node index.js
 - Menu ringkas `#menu`, info mudah `#info`, backup ringan `#backup`
 
 Lihat `PANDUAN_TERMUX.md` untuk panduan lengkap Termux 100% & backup hemat.
-
-## Struktur Push GitHub
-Yang di-push: `index.js`, `package.json`, `config.json`, `ecosystem.config.js`, `PANDUAN_TERMUX.md`, `README.md`
-Yang di-ignore (tidak di-push): `node_modules/`, `sessions/`, `sessions_backup/`, `logs/`
