@@ -3,6 +3,4 @@ sessions/
 sessions_backup/
 logs/
 *.log
-# jangan push apikey - set lokal via #set apikey
-gemini.key
 .env

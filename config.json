@@ -6,13 +6,10 @@
     "antiTelpon": false,
     "autoKickStory": false,
     "autoViewOnce": true,
-    "aiEnabled": true,
-    "aiWhitelist": [],
-    "geminiApiKey": "",
-    "geminiModel": "gemini-1.5-flash",
-    "blackList": [
+    "blackList": [],
+    "whiteList": [
+        "6285946714349"
     ],
-    "whiteList": [],
     "emojis": [
         "💚",
         "👍",
