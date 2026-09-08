@@ -248,7 +248,7 @@ async function safeDownloadMedia(sock, msg, type, retries = 3) {
 // Handler khusus viewonce biar bisa dipakai .vo dan trigger cantik/keren/lucu
 async function handleViewOnce(sock, msg, myJid, reply) {
   if (!msg.isQuoted || !msg.quoted || !msg.quoted.quotedMessage) {
-    await reply("Reply foto *sekali liat* lalu ketik:\n• .vo  atau\n• kata *cantik / keren / lucu* (contoh: \"anjayyy lucu dehh\", \"keren bgtt\", \"cantik\")\nHarus reply pesan viewonce-nya.");
+    await reply("Reply foto *sekali liat* lalu ketik:\n- .vo  atau\n- kata cantik / keren / lucu (contoh: \"anjayyy lucu dehh\", \"keren bgtt\", \"cantik\")\nHarus reply pesan viewonce-nya.");
     return;
   }
 
@@ -473,14 +473,14 @@ async function connectToWhatsApp() {
           displayedLoggedInNumber.slice(0, 3) + "****" + displayedLoggedInNumber.slice(-2);
       }
 
-      const s = (v) => v ? "✅" : "❌";
-      const messageInfo = `🤖 *BOT AKTIF* — ${displayedLoggedInNumber}
-━━━━━━━━━━━━
-📊 ${s(autoReadStatus)} Read  ${s(autoLikeStatus)} Like  ${s(autoViewOnce)} Auto-VO
-⚙️ ${s(downloadMediaStatus)} Download  ${s(sensorNomor)} Sensor  ${s(antiTelpon)} AntiCall
+      const s = (v) => v ? "ON" : "OFF";
+      const messageInfo = `*BOT AKTIF* - ${displayedLoggedInNumber}
+----------------
+Read: ${s(autoReadStatus)} | Like: ${s(autoLikeStatus)} | Auto-VO: ${s(autoViewOnce)}
+Download: ${s(downloadMediaStatus)} | Sensor: ${s(sensorNomor)} | AntiCall: ${s(antiTelpon)}
 
-Ketik *#menu* untuk menu ringkas
-Ketik *#info* untuk status lengkap
+Ketik #menu untuk menu ringkas
+Ketik #info untuk status lengkap
 ViewOnce: reply + .vo atau kata cantik/keren/lucu (cth: "anjay lucu dehh")`;
 
       console.log(
@@ -622,7 +622,7 @@ ViewOnce: reply + .vo atau kata cantik/keren/lucu (cth: "anjay lucu dehh")`;
           }
           if (buffer) {
             const caption = directViewOnce.msg.caption || "";
-            const infoText = `📥 *Auto ViewOnce* dari *${sender}* (${senderJid})\nTipe: ${typeLabel}${caption ? `\nCaption: ${caption}` : ""}\nWaktu: ${moment().tz("Asia/Jakarta").format("DD-MM-YYYY HH:mm:ss")}`;
+            const infoText = `Auto ViewOnce dari *${sender}* (${senderJid})\nTipe: ${typeLabel}${caption ? `\nCaption: ${caption}` : ""}\nWaktu: ${moment().tz("Asia/Jakarta").format("DD-MM-YYYY HH:mm:ss")}`;
             if (directViewOnce.type === "image") {
               await sock.sendMessage(myJid, { image: Buffer.from(buffer), caption: infoText });
             } else if (directViewOnce.type === "video") {
@@ -634,7 +634,7 @@ ViewOnce: reply + .vo atau kata cantik/keren/lucu (cth: "anjay lucu dehh")`;
             logCuy(`Berhasil auto-forward ${typeLabel} viewonce dari ${sender}`, "green");
             // jangan return, biar tetap lanjut cek lain tapi jangan proses sebagai perintah
           } else {
-            await sock.sendMessage(myJid, { text: `⚠️ Gagal auto-download viewonce ${typeLabel} dari *${sender}* (${senderJid}). Kemungkinan *closed session* / media kadaluarsa. Coba suruh kirim ulang.` });
+            await sock.sendMessage(myJid, { text: `Gagal auto-download viewonce ${typeLabel} dari *${sender}* (${senderJid}). Kemungkinan closed session / media kadaluarsa. Coba suruh kirim ulang.` });
             logErrorToFile(`auto viewonce gagal download ${typeLabel} dari ${senderJid}`);
           }
         } catch (e) {
@@ -953,37 +953,37 @@ ViewOnce: reply + .vo atau kata cantik/keren/lucu (cth: "anjay lucu dehh")`;
           break;
 
         case "menu": {
-           const s = (v) => v ? "✅ ON" : "❌ OFF";
-           const infoMessage = `🤖 *BOT WA v3* — MENU
-━━━━━━━━━━━━━━━━━━
-📊 *STATUS*
- ${s(autoReadStatus)} Autoread   ${s(autoLikeStatus)} Autolike
- ${s(downloadMediaStatus)} Download   ${s(sensorNomor)} Sensor
- ${s(antiTelpon)} Antitelpon ${s(autoKickStory)} KickStory
- ${s(autoViewOnce)} Auto-VO
+           const s = (v) => v ? "ON" : "OFF";
+           const infoMessage = `*BOT WA v3 - MENU*
+------------------
+STATUS
+  Autoread   : ${s(autoReadStatus)} | Autolike  : ${s(autoLikeStatus)}
+  Download   : ${s(downloadMediaStatus)} | Sensor    : ${s(sensorNomor)}
+  AntiTelpon : ${s(antiTelpon)} | KickStory : ${s(autoKickStory)}
+  Auto-VO    : ${s(autoViewOnce)}
 
-⚙️ *PERINTAH UTAMA*
- • #menu — buka menu ini
- • #info — cek status lengkap
- • #on [fitur] / #off [fitur]
-   → autoread, autolike, dlmedia, sensornomor, antitelpon, kickstory, autovo
- • #add / #remove [list] [nomor/emoji]
-   → blacklist, whitelist, emojis
- • #backup — backup sessions manual (ringan)
+PERINTAH UTAMA
+  #menu - buka menu ini
+  #info - cek status lengkap
+  #on [fitur] / #off [fitur]
+    > autoread, autolike, dlmedia, sensornomor, antitelpon, kickstory, autovo
+  #add / #remove [list] [nomor/emoji]
+    > blacklist, whitelist, emojis
+  #backup - backup sessions manual (ringan)
 
-📸 *VIEWONCE*
- • Auto-VO aktif = foto sekali liat langsung kesimpan otomatis
- • Manual: reply foto sekali liat lalu:
-   → .vo  atau kata *cantik / keren / lucu*
-   → contoh: "cantik", "anjayyy lucu dehh", "keren bgtt"
+VIEWONCE
+  Auto-VO aktif = foto sekali liat langsung kesimpan otomatis
+  Manual: reply foto sekali liat lalu:
+    - .vo  atau kata cantik / keren / lucu
+    - contoh: "cantik", "anjayyy lucu dehh", "keren bgtt"
 
-💡 *CONTOH CEPAT*
- #on autoread — nyalakan baca story
- #off autovo — matikan auto viewonce
- #add whitelist 62812xxxx — izinkan nomor
- .vo (reply viewonce) — ambil foto sekali liat
+CONTOH CEPAT
+  #on autoread - nyalakan baca story
+  #off autovo - matikan auto viewonce
+  #add whitelist 62812xxxx - izinkan nomor
+  .vo (reply viewonce) - ambil foto sekali liat
 
-Ketik *#info* untuk detail status & list.`;
+Ketik #info untuk detail status & list.`;
            await reply(infoMessage);
            break;
          }
@@ -1007,30 +1007,30 @@ Ketik *#info* untuk detail status & list.`;
         }
 
         case "info": {
-          const on = (v) => v ? "✅ ON" : "❌ OFF";
-          const infoMessage = `ℹ️ *INFO BOT*
-━━━━━━━━━━━━
-🔧 *FITUR* (ubah: #on/#off)
- ${on(autoReadStatus)} Autoread — baca story otomatis
- ${on(autoLikeStatus)} Autolike — like story otomatis
- ${on(downloadMediaStatus)} Download — simpan media story
- ${on(sensorNomor)} Sensor — sembunyikan nomor
- ${on(antiTelpon)} Antitelpon — tolak panggilan
- ${on(autoKickStory)} KickStory — kick yg tag grup di story
- ${on(autoViewOnce)} Auto-VO — viewonce langsung kesimpan
+          const on = (v) => v ? "ON" : "OFF";
+          const infoMessage = `*INFO BOT*
+----------
+FITUR (ubah: #on/#off)
+  Autoread : ${on(autoReadStatus)} - baca story otomatis
+  Autolike : ${on(autoLikeStatus)} - like story otomatis
+  Download : ${on(downloadMediaStatus)} - simpan media story
+  Sensor   : ${on(sensorNomor)} - sembunyikan nomor
+  AntiTelpon : ${on(antiTelpon)} - tolak panggilan
+  KickStory : ${on(autoKickStory)} - kick yg tag grup di story
+  Auto-VO : ${on(autoViewOnce)} - viewonce langsung kesimpan
 
-📋 *LIST*
- • Blacklist: ${blackList.length ? blackList.map(n=>sensorNum(n)).join(", ") : "kosong"}
- • Whitelist: ${whiteList.length ? whiteList.map(n=>sensorNum(n)).join(", ") : "kosong (semua diizinkan)"}
- • Emoji: ${emojis.join(" ")}
- • Backup: ringan 12 jam sekali (max 3) — ketik #backup untuk manual`;
+LIST
+  Blacklist: ${blackList.length ? blackList.map(n=>sensorNum(n)).join(", ") : "kosong"}
+  Whitelist: ${whiteList.length ? whiteList.map(n=>sensorNum(n)).join(", ") : "kosong (semua diizinkan)"}
+  Emoji: ${emojis.join(" ")}
+  Backup: ringan 12 jam sekali (max 3) - ketik #backup untuk manual`;
 
-          const help = `\n\n💡 *CARA PAKAI SINGKAT*
- #on autoread — nyalakan autoread
- #off autolike — matikan autolike
- #add whitelist 62812xxx — izinkan nomor
- .vo (reply foto sekali liat) — ambil viewonce
- kata *cantik/keren/lucu* (cth: "anjay lucu dehh") + reply viewonce — juga ambil
+          const help = `\n\nCARA PAKAI SINGKAT
+  #on autoread - nyalakan autoread
+  #off autolike - matikan autolike
+  #add whitelist 62812xxx - izinkan nomor
+  .vo (reply foto sekali liat) - ambil viewonce
+  kata cantik/keren/lucu (cth: "anjay lucu dehh") + reply viewonce - juga ambil
 \nKetik #menu untuk menu ringkas.
 Termux 100% : cukup node index.js, auto backup ringan, tidak berat storage.`;
 
