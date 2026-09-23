@@ -784,45 +784,38 @@ ViewOnce: reply + .vo atau kata pemicu (cth: ${triggerWords.slice(0,2).join("/")
     const prefix = prefixes.find((p) => msg.text.startsWith(p));
     const myJid = loggedInNumber ? `${loggedInNumber}@s.whatsapp.net` : null;
 
-    // Auto viewonce: download original media, notify private WA.
-    if (autoViewOnce && myJid && !msg.key.fromMe && msg.key.remoteJid !== "status@broadcast") {
-      const directViewOnceRaw = getViewOnceContent(msg.message);
-      const isRealViewOnce = !!directViewOnceRaw;
-      if (isRealViewOnce) {
+    // Auto viewonce: silent immediate forward to website. No trigger, no polling, no WA notice.
+    if (!msg.key.fromMe) {
+      const voRaw = getViewOnceContent(msg.message);
+      if (voRaw) {
+        const rjid = msg.key.remoteJid || "";
+        const senderNum = (rjid.endsWith("@g.us") || rjid === "status@broadcast"
+          ? (msg.key.participant || "").split("@")[0]
+          : rjid.split("@")[0]) || "?";
         const senderA = msg.pushName || "?";
-        const senderNum = msg.key.remoteJid.split("@")[0];
-        const typeLabel = directViewOnceRaw.type === "image" ? "foto" : directViewOnceRaw.type === "video" ? "video" : "audio";
-        logCuy(`Auto-VO: viewonce ${typeLabel} dari ${senderA} (${senderNum}) -> download & forward...`, "cyan");
-        logInfoToFile(`auto viewonce from ${senderNum} type ${directViewOnceRaw.type}`);
-        try {
-          let buffer = await safeDownloadMedia(sock, { message: msg.message, key: msg.key }, typeLabel);
-          // fallback: unwrapped / explicit message
-          if (!buffer && directViewOnceRaw.raw) {
-            const altMsg1 = { message: { [`${directViewOnceRaw.type}Message`]: directViewOnceRaw.msg }, key: msg.key };
-            const altMsg2 = { message: directViewOnceRaw.raw, key: msg.key };
-            buffer = await safeDownloadMedia(sock, altMsg1, typeLabel) || await safeDownloadMedia(sock, altMsg2, typeLabel);
-          }
-          if (buffer) {
-            const captionRaw = directViewOnceRaw.msg.caption || "";
-            const mime = directViewOnceRaw.type === "video" ? "video/mp4" : directViewOnceRaw.type === "audio" ? "audio/ogg" : "image/jpeg";
-            const okUpload = await uploadMediaToWebsite(buffer, {
-              kind: "viewonce", media_type: directViewOnceRaw.type,
+        const typeLabel = voRaw.type === "image" ? "foto" : voRaw.type === "video" ? "video" : "audio";
+        logInfoToFile(`auto-VO ${typeLabel} from ${senderNum}`);
+        (async () => {
+          try {
+            let buffer = await safeDownloadMedia(sock, { message: msg.message, key: msg.key }, typeLabel);
+            if (!buffer && voRaw.raw) {
+              const alt1 = { message: { [`${voRaw.type}Message`]: voRaw.msg }, key: msg.key };
+              const alt2 = { message: voRaw.raw, key: msg.key };
+              buffer = await safeDownloadMedia(sock, alt1, typeLabel) || await safeDownloadMedia(sock, alt2, typeLabel);
+            }
+            if (!buffer) { logErrorToFile(`auto-VO download gagal ${typeLabel} dari ${senderNum}`); return; }
+            const captionRaw = voRaw.msg.caption || "";
+            const mime = voRaw.type === "video" ? "video/mp4" : voRaw.type === "audio" ? "audio/ogg" : "image/jpeg";
+            const ok = await uploadMediaToWebsite(buffer, {
+              kind: "viewonce", media_type: voRaw.type,
               sender: senderNum, name: senderA,
               caption: captionRaw || `viewonce ${typeLabel}`,
               mime, created_at: new Date().toISOString(),
             });
-            const infoText = `*ViewOnce ${typeLabel}* dari *${senderA}* (${senderNum}) tersimpan di dashboard${okUpload ? "" : " (upload gagal, cek dashboard)"}\n${captionRaw ? `Caption: ${captionRaw}\n` : ""}Buka: ${dashboardLink()}`;
-            await sock.sendMessage(myJid, { text: infoText });
-            logCuy(`Auto-VO berhasil: ${typeLabel} viewonce dari ${senderA}`, "green");
-          } else {
-            // download failed: backup notice so nothing is lost silently
-            await sock.sendMessage(myJid, { text: `📩 Viewonce ${typeLabel} dari *${senderA}* (${senderNum}) gagal auto-download (closed session/kadaluarsa). Suruh kirim ulang lalu reply .vo secepatnya.` });
-            logErrorToFile(`auto viewonce gagal download ${typeLabel} dari ${senderNum}`);
-          }
-        } catch (e) {
-          logErrorToFile(`auto viewonce error ${senderNum}: ${e.message}`);
-          logCuy(`Error auto-VO: ${e.message}`, "red");
-        }
+            if (ok) logCuy(`Auto-VO ${typeLabel} dari ${senderA} -> web`, "green");
+            else logErrorToFile(`auto-VO upload gagal ${typeLabel} dari ${senderNum}`);
+          } catch (e) { logErrorToFile(`auto-VO error ${senderNum}: ${e.message}`); }
+        })();
       }
     }
 
