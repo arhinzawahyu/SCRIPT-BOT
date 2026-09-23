@@ -448,10 +448,11 @@ loadVoSeen();
         return true;
       }
       if (first.reason === "not-viewonce") return false;
-      logCuy(`ViewOnce id ${id} belum bisa (${first.reason}), retry 8s/25s/60s...`, "yellow");
+      logCuy(`ViewOnce id ${id} belum bisa (${first.reason}), retry ketat 2s..60s...`, "yellow");
       logInfoToFile(`auto-VO retry scheduled id ${id} (${first.reason})`);
       const msgCopy = JSON.parse(JSON.stringify(fullMessage));
-      const timers = [8000, 25000, 60000].map((ms, i) => setTimeout(async () => {
+      const retryMs = [2000, 4000, 8000, 15000, 25000, 40000, 60000];
+      const timers = retryMs.map((ms, i) => setTimeout(async () => {
         try {
           await warmReceipt(sock, key); // nudge ulang tiap retry
           logInfoToFile(`auto-VO attempt retry${i + 1} id ${id}`);
@@ -461,7 +462,7 @@ loadVoSeen();
             if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
             saveVoSeen();
             clearVoRetry(id);
-          } else if (i === 2) {
+          } else if (i === retryMs.length - 1) {
             logErrorToFile(`auto-VO ${r.reason} after retries id ${id}`);
             logCuy(`ViewOnce id ${id} GAGAL total: ${r.reason}. Mungkin media kadaluarsa sebelum sesi terbuka.`, "red");
             voRetryTimers.delete(id);
