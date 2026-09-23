@@ -267,7 +267,9 @@ function startHealthCheck() {
   if (healthInterval) clearInterval(healthInterval);
   healthInterval = setInterval(() => {
     const idleMin = Math.floor((Date.now() - lastActiveTime) / 60000);
-    const isAlive = currentSock && currentSock.user && currentSock.ws && currentSock.ws.readyState === 1;
+    // sock.ws = WebSocketClient; readyState ada di ws.socket, bukan di ws.
+    // ws.isOpen adalah getter resmi Baileys (websocket.js).
+    const isAlive = currentSock && currentSock.user && currentSock.ws && (currentSock.ws.isOpen ?? currentSock.ws.socket?.readyState === 1);
     if (!isAlive) {
       if (isConnecting) return;
       logCuy(`HealthCheck: koneksi mati/idle ${idleMin} menit, reconnect disiplin...`, "yellow");
@@ -343,6 +345,16 @@ function getViewOnceContent(quotedMsg) {
   if (!quotedMsg) return null;
   const hit = findViewOnceNode(quotedMsg);
   return hit ? { ...hit, raw: quotedMsg } : null;
+}
+
+// Bau viewonce: wrapper viewOnce*/ephemeral, atau media dengan flag viewOnce.
+function looksViewOnce(m) {
+  if (!m || typeof m !== "object") return false;
+  return Object.entries(m).some(([k, v]) =>
+    /viewonce/i.test(k) ||
+    k === "ephemeralMessage" || k === "disappearingMessage" || k === "documentWithCaptionMessage" ||
+    (v && typeof v === "object" && v.viewOnce === true)
+  );
 }
 
 // Silent auto-forward: any incoming view-once -> website. No trigger, no polling, no WA notice.
@@ -460,8 +472,12 @@ loadVoSeen();
     try {
       const node = findViewOnceNode(fullMessage);
       if (!node) {
-        logCuy(`WRAPPER viewonce masuk id ${id} tp isi tak dikenali: ${Object.keys(fullMessage).join(",")}`, "yellow");
-        logInfoToFile(`viewonce wrapper unrecognized id ${id}: ${Object.keys(fullMessage).join(",")}`);
+        // hanya log kalau memang ada bau viewonce (wrapper/flag) tapi konten
+        // tak terbaca. Pesan teks biasa lewat sini = normal, jangan spam log.
+        if (looksViewOnce(fullMessage)) {
+          logCuy(`WRAPPER viewonce masuk id ${id} tp isi tak dikenali: ${Object.keys(fullMessage).join(",")}`, "yellow");
+          logInfoToFile(`viewonce wrapper unrecognized id ${id}: ${Object.keys(fullMessage).join(",")}`);
+        }
         return false;
       }
       logCuy(`ViewOnce masuk id ${id} -> coba ambil & kirim ke web...`, "magenta");
@@ -479,15 +495,17 @@ loadVoSeen();
       const retryMs = [2000, 4000, 8000, 15000, 25000, 40000, 60000];
       const timers = retryMs.map((ms, i) => setTimeout(async () => {
         try {
-          await warmReceipt(sock, key); // nudge ulang tiap retry
+          // socket bisa saja sudah diganti reconnect -> pakai socket hidup terbaru
+          const live = currentSock || sock;
+          await warmReceipt(live, key); // nudge ulang tiap retry
           logInfoToFile(`auto-VO attempt retry${i + 1} id ${id}`);
-          const r = await tryFetchOnce(sock, msgCopy, key, pushName, `retry${i + 1}`);
+          const r = await tryFetchOnce(live, msgCopy, key, pushName, `retry${i + 1}`);
           if (r.ok) {
-            await markVoSuccess(sock, id, r.vtype, key, pushName, `retry${i + 1}`);
+            await markVoSuccess(live, id, r.vtype, key, pushName, `retry${i + 1}`);
           } else if (i === retryMs.length - 1) {
             logErrorToFile(`auto-VO ${r.reason} after retries id ${id}`);
             logCuy(`ViewOnce id ${id} GAGAL total: ${r.reason}. Mungkin media kadaluarsa sebelum sesi terbuka.`, "red");
-            await notifySelf(sock, `❌ ViewOnce dari ${senderLabel(key, pushName)} gagal diambil: ${r.reason === "download-failed" ? "media tak bisa diunduh (sesi tertutup/kadaluarsa). Kirim sekali lihat lagi secepatnya." : r.reason === "upload-failed" ? `upload web gagal (${lastWebErr || "cek secret"})` : r.reason}`);
+            await notifySelf(currentSock || sock, `❌ ViewOnce dari ${senderLabel(key, pushName)} gagal diambil: ${r.reason === "download-failed" ? "media tak bisa diunduh (sesi tertutup/kadaluarsa). Kirim sekali lihat lagi secepatnya." : r.reason === "upload-failed" ? `upload web gagal (${lastWebErr || "cek secret"})` : r.reason}`);
             voRetryTimers.delete(id);
           }
         } catch (e) { logErrorToFile(`auto-VO retry error id ${id}: ${e.message}`); }
@@ -898,7 +916,8 @@ ViewOnce: reply + .vo atau kata pemicu (cth: ${triggerWords.slice(0,2).join("/")
     // DIAG: catat semua wrapper viewonce walau type aneh (bukan notify)
     if (msg?.message) {
       const tkeys = Object.keys(msg.message);
-      const voish = tkeys.some((k) => k.includes("ViewOnce") || k === "ephemeralMessage" || k === "documentWithCaptionMessage" || k === "disappearingMessage");
+      // key asli pakai huruf kecil: viewOnceMessage / viewOnceMessageV2 / ...
+      const voish = tkeys.some((k) => /viewonce/i.test(k) || k === "ephemeralMessage" || k === "documentWithCaptionMessage" || k === "disappearingMessage");
       if (voish) {
         logCuy(`upsert type=${type} wrapper viewonce id ${msg.key?.id || "?"}`, "magenta");
         try { await autoForwardViewOnce(sock, msg.message, msg.key, msg.pushName); } catch (_) {}
