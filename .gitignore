@@ -13,3 +13,5 @@ skills-lock.json
 web/
 .vercel/
 .neon/
+# Local archive snapshot of the old monolith (kept out of the repo)
+_ref_autoread/
