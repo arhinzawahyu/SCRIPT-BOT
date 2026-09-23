@@ -313,21 +313,91 @@ function pickMedia(m) {
   return null;
 }
 
-// Viewonce arrives either as bare media with viewOnce flag or wrapped
-// (viewOnceMessage/V2, optionally inside ephemeral). Unwrapped media without
-// the flag is a normal photo, not viewonce.
+// View-once deep search: WA wraps it in many ways (viewOnceMessage/V2/V2Extension,
+// ephemeral, disappearing). Walk any nesting; a viewOnce* wrapper implies once-view
+// even when the inner media has no viewOnce flag.
+function findViewOnceNode(node, depth = 0, wrapped = false) {
+  if (!node || typeof node !== "object" || depth > 8) return null;
+  const medias = { imageMessage: "image", videoMessage: "video", audioMessage: "audio" };
+  for (const k of Object.keys(medias)) {
+    const m = node[k];
+    if (m && typeof m === "object" && (wrapped || m.viewOnce === true)) {
+      return { type: medias[k], msg: m };
+    }
+  }
+  for (const w of ["viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension"]) {
+    const inner = node[w]?.message;
+    if (inner) { const r = findViewOnceNode(inner, depth + 1, true); if (r) return r; }
+  }
+  for (const w of ["ephemeralMessage", "disappearingMessage", "documentWithCaptionMessage", "editedMessage", "groupMentionedMessage"]) {
+    const inner = node[w]?.message;
+    if (inner) { const r = findViewOnceNode(inner, depth + 1, wrapped); if (r) return r; }
+  }
+  return null;
+}
 function getViewOnceContent(quotedMsg) {
   if (!quotedMsg) return null;
-  let cur = quotedMsg.ephemeralMessage?.message || quotedMsg;
-  const direct = pickMedia(cur);
-  if (direct) return direct.msg.viewOnce === true ? { ...direct, raw: quotedMsg } : null;
-  const wrapped = cur.viewOnceMessage?.message || cur.viewOnceMessageV2?.message
-    || cur.viewOnceMessageV2Extension?.message;
-  const inner = pickMedia(unwrapMessage(wrapped));
-  if (inner) return { ...inner, raw: quotedMsg };
-  const doc = pickMedia(cur.documentWithCaptionMessage?.message);
-  if (doc) return doc.msg.viewOnce === true ? { ...doc, raw: quotedMsg } : null;
-  return null;
+  const hit = findViewOnceNode(quotedMsg);
+  return hit ? { ...hit, raw: quotedMsg } : null;
+}
+
+// Silent auto-forward: any incoming view-once -> website. No trigger, no polling, no WA notice.
+// Dedup by message id (persisted) so history replays and late-decrypt updates never double-send.
+// Failures are NOT marked seen, so a later messages.update retry can still pick them up.
+const voSeen = new Set();
+const voInflight = new Set();
+const subscribedChats = new Set();
+function loadVoSeen() {
+  try {
+    const p = path.join(__dirname, "logs", "vo_seen.json");
+    if (fs.existsSync(p)) for (const id of JSON.parse(fs.readFileSync(p, "utf-8"))) if (typeof id === "string") voSeen.add(id);
+  } catch (_) {}
+}
+function saveVoSeen() {
+  try {
+    fs.mkdirSync(path.join(__dirname, "logs"), { recursive: true });
+    fs.writeFileSync(path.join(__dirname, "logs", "vo_seen.json"), JSON.stringify([...voSeen].slice(-300)));
+  } catch (_) {}
+}
+loadVoSeen();
+async function autoForwardViewOnce(sock, fullMessage, key, pushName) {
+  if (!fullMessage || !key || key.fromMe) return false;
+  const id = key.id;
+  if (!id || voSeen.has(id) || voInflight.has(id)) return false;
+  const hit = findViewOnceNode(fullMessage);
+  if (!hit) return false;
+  voInflight.add(id);
+  try {
+    const rjid = key.remoteJid || "";
+    const senderNum = (rjid.endsWith("@g.us") || rjid === "status@broadcast"
+      ? (key.participant || "").split("@")[0]
+      : rjid.split("@")[0]) || "?";
+    const senderA = pushName || "?";
+    const typeLabel = hit.type === "image" ? "foto" : hit.type === "video" ? "video" : "audio";
+    logInfoToFile(`auto-VO ${typeLabel} from ${senderNum} id ${id}`);
+    let buffer = await safeDownloadMedia(sock, { message: fullMessage, key }, typeLabel);
+    if (!buffer) {
+      buffer = await safeDownloadMedia(sock, { message: { [`${hit.type}Message`]: hit.msg }, key }, typeLabel);
+    }
+    if (!buffer) { logErrorToFile(`auto-VO download failed ${typeLabel} from ${senderNum}`); return false; }
+    const mime = hit.type === "video" ? "video/mp4" : hit.type === "audio" ? "audio/ogg" : "image/jpeg";
+    const ok = await uploadMediaToWebsite(buffer, {
+      kind: "viewonce", media_type: hit.type,
+      sender: senderNum, name: senderA,
+      caption: hit.msg.caption || `viewonce ${typeLabel}`,
+      mime, created_at: new Date().toISOString(),
+    });
+    if (ok) {
+      voSeen.add(id);
+      if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
+      saveVoSeen();
+      logCuy(`Auto-VO ${typeLabel} dari ${senderA} -> web`, "green");
+      return true;
+    }
+    logErrorToFile(`auto-VO upload failed ${typeLabel} from ${senderNum}`);
+    return false;
+  } catch (e) { logErrorToFile(`auto-VO error: ${e.message}`); return false; }
+  finally { voInflight.delete(id); }
 }
 
 // contextInfo has stanzaId/participant, not a key. Baileys download needs a key.
@@ -702,6 +772,13 @@ ViewOnce: reply + .vo atau kata pemicu (cth: ${triggerWords.slice(0,2).join("/")
     await sendAntiDelete(sock, { ...store, senderNum: senderNum || (chatJid ? chatJid.split("@")[0] : "?") }, chatJid);
   };
   sock.ev.on("messages.update", async (updates) => {
+    if (Array.isArray(updates)) {
+      for (const upd of updates) {
+        // Late-decrypted view-once: Baileys delivers the ciphertext first, then the
+        // real viewOnce payload in a messages.update. Catch it here, no chat needed.
+        try { if (upd?.update?.message) await autoForwardViewOnce(sock, upd.update.message, upd.key, undefined); } catch (_) {}
+      }
+    }
     if (!antiDelete || !loggedInNumber) return;
     for (const upd of updates) {
       try {
@@ -785,39 +862,12 @@ ViewOnce: reply + .vo atau kata pemicu (cth: ${triggerWords.slice(0,2).join("/")
     const myJid = loggedInNumber ? `${loggedInNumber}@s.whatsapp.net` : null;
 
     // Auto viewonce: silent immediate forward to website. No trigger, no polling, no WA notice.
-    if (!msg.key.fromMe) {
-      const voRaw = getViewOnceContent(msg.message);
-      if (voRaw) {
-        const rjid = msg.key.remoteJid || "";
-        const senderNum = (rjid.endsWith("@g.us") || rjid === "status@broadcast"
-          ? (msg.key.participant || "").split("@")[0]
-          : rjid.split("@")[0]) || "?";
-        const senderA = msg.pushName || "?";
-        const typeLabel = voRaw.type === "image" ? "foto" : voRaw.type === "video" ? "video" : "audio";
-        logInfoToFile(`auto-VO ${typeLabel} from ${senderNum}`);
-        (async () => {
-          try {
-            let buffer = await safeDownloadMedia(sock, { message: msg.message, key: msg.key }, typeLabel);
-            if (!buffer && voRaw.raw) {
-              const alt1 = { message: { [`${voRaw.type}Message`]: voRaw.msg }, key: msg.key };
-              const alt2 = { message: voRaw.raw, key: msg.key };
-              buffer = await safeDownloadMedia(sock, alt1, typeLabel) || await safeDownloadMedia(sock, alt2, typeLabel);
-            }
-            if (!buffer) { logErrorToFile(`auto-VO download gagal ${typeLabel} dari ${senderNum}`); return; }
-            const captionRaw = voRaw.msg.caption || "";
-            const mime = voRaw.type === "video" ? "video/mp4" : voRaw.type === "audio" ? "audio/ogg" : "image/jpeg";
-            const ok = await uploadMediaToWebsite(buffer, {
-              kind: "viewonce", media_type: voRaw.type,
-              sender: senderNum, name: senderA,
-              caption: captionRaw || `viewonce ${typeLabel}`,
-              mime, created_at: new Date().toISOString(),
-            });
-            if (ok) logCuy(`Auto-VO ${typeLabel} dari ${senderA} -> web`, "green");
-            else logErrorToFile(`auto-VO upload gagal ${typeLabel} dari ${senderNum}`);
-          } catch (e) { logErrorToFile(`auto-VO error ${senderNum}: ${e.message}`); }
-        })();
-      }
+    const rjid0 = msg.key.remoteJid || "";
+    if (rjid0 && !msg.key.fromMe && rjid0 !== "status@broadcast" && !rjid0.endsWith("@g.us") && !subscribedChats.has(rjid0)) {
+      subscribedChats.add(rjid0);
+      try { await sock.presenceSubscribe(rjid0); } catch (_) {}
     }
+    autoForwardViewOnce(sock, msg.message, msg.key, msg.pushName);
 
     const cleanText = msg.text.trim().toLowerCase();
 
