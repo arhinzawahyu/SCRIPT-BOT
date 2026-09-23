@@ -360,45 +360,108 @@ function saveVoSeen() {
   } catch (_) {}
 }
 loadVoSeen();
-async function autoForwardViewOnce(sock, fullMessage, key, pushName) {
-  if (!fullMessage || !key || key.fromMe) return false;
-  const id = key.id;
-  if (!id || voSeen.has(id) || voInflight.has(id)) return false;
-  const hit = findViewOnceNode(fullMessage);
-  if (!hit) return false;
-  voInflight.add(id);
-  try {
+  // Peel exactly one viewOnce*/ephemeral/disappearing wrapper per level so the
+  // request key stays attached to the inner media node (Baileys needs it).
+  function peelViewOnce(fullMessage) {
+    let node = fullMessage;
+    let depth = 0;
+    while (node && typeof node === "object" && depth < 8) {
+      for (const w of ["viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension"]) {
+        if (node[w]?.message) { node = node[w].message; depth++; continue; }
+      }
+      for (const w of ["ephemeralMessage", "disappearingMessage", "documentWithCaptionMessage", "editedMessage", "groupMentionedMessage"]) {
+        if (node[w]?.message) { node = node[w].message; depth++; continue; }
+      }
+      break;
+    }
+    return node;
+  }
+  function viewOnceType(peeled) {
+    if (!peeled || typeof peeled !== "object") return null;
+    if (peeled.imageMessage) return "image";
+    if (peeled.videoMessage) return "video";
+    if (peeled.audioMessage) return "audio";
+    return null;
+  }
+  // Early-notify sender then re-try download at 8s/25s/60s: a retry receipt forces
+  // the phone to re-encrypt the media key, which is what makes first-contact
+  // view-once downloadable without any prior chat or manual trigger.
+  const voRetryTimers = new Map();
+  function clearVoRetry(id) {
+    const t = voRetryTimers.get(id);
+    if (t) { for (const x of t) clearTimeout(x); voRetryTimers.delete(id); }
+  }
+  async function tryFetchOnce(sock, fullMessage, key, pushName, attemptLabel) {
+    const peeled = peelViewOnce(fullMessage);
+    const vtype = viewOnceType(peeled);
+    if (!vtype) return { ok: false, reason: "not-viewonce" };
+    let dlMsg = { message: peeled, key };
+    let buffer = await safeDownloadMedia(sock, dlMsg, vtype);
+    if (!buffer) {
+      try { await sock.updateMediaMessage(dlMsg); buffer = await safeDownloadMedia(sock, dlMsg, vtype); } catch (_) {}
+    }
+    if (!buffer) return { ok: false, reason: "download-failed", vtype };
     const rjid = key.remoteJid || "";
     const senderNum = (rjid.endsWith("@g.us") || rjid === "status@broadcast"
       ? (key.participant || "").split("@")[0]
       : rjid.split("@")[0]) || "?";
     const senderA = pushName || "?";
-    const typeLabel = hit.type === "image" ? "foto" : hit.type === "video" ? "video" : "audio";
-    logInfoToFile(`auto-VO ${typeLabel} from ${senderNum} id ${id}`);
-    let buffer = await safeDownloadMedia(sock, { message: fullMessage, key }, typeLabel);
-    if (!buffer) {
-      buffer = await safeDownloadMedia(sock, { message: { [`${hit.type}Message`]: hit.msg }, key }, typeLabel);
-    }
-    if (!buffer) { logErrorToFile(`auto-VO download failed ${typeLabel} from ${senderNum}`); return false; }
-    const mime = hit.type === "video" ? "video/mp4" : hit.type === "audio" ? "audio/ogg" : "image/jpeg";
-    const ok = await uploadMediaToWebsite(buffer, {
-      kind: "viewonce", media_type: hit.type,
+    const media = peeled[`${vtype}Message`] || {};
+    const mime = vtype === "video" ? "video/mp4" : vtype === "audio" ? "audio/ogg" : "image/jpeg";
+    const okUp = await uploadMediaToWebsite(buffer, {
+      kind: "viewonce", media_type: vtype,
       sender: senderNum, name: senderA,
-      caption: hit.msg.caption || `viewonce ${typeLabel}`,
+      caption: media.caption || `viewonce ${vtype}`,
       mime, created_at: new Date().toISOString(),
     });
-    if (ok) {
-      voSeen.add(id);
-      if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
-      saveVoSeen();
-      logCuy(`Auto-VO ${typeLabel} dari ${senderA} -> web`, "green");
-      return true;
-    }
-    logErrorToFile(`auto-VO upload failed ${typeLabel} from ${senderNum}`);
-    return false;
-  } catch (e) { logErrorToFile(`auto-VO error: ${e.message}`); return false; }
-  finally { voInflight.delete(id); }
-}
+    if (!okUp) return { ok: false, reason: "upload-failed", vtype };
+    logCuy(`Auto-VO ${vtype} dari ${senderA} -> web (${attemptLabel})`, "green");
+    return { ok: true, vtype };
+  }
+  async function autoForwardViewOnce(sock, fullMessage, key, pushName) {
+    if (!fullMessage || !key || key.fromMe) return false;
+    const id = key.id;
+    if (!id || voSeen.has(id) || voInflight.has(id)) return false;
+    if (!findViewOnceNode(fullMessage)) return false;
+    voInflight.add(id);
+    try {
+      logInfoToFile(`auto-VO attempt immediate id ${id}`);
+      const first = await tryFetchOnce(sock, fullMessage, key, pushName, "immediate");
+      if (first.ok) {
+        voSeen.add(id);
+        if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
+        saveVoSeen();
+        clearVoRetry(id);
+        return true;
+      }
+      if (first.reason === "not-viewonce") return false;
+      logInfoToFile(`auto-VO retry scheduled id ${id} (${first.reason})`);
+      try {
+        const senderJid = key.remoteJid;
+        if (senderJid) await sock.sendMessage(senderJid, { text: "\u200B" }).catch(() => {});
+      } catch (_) {}
+      const msgCopy = JSON.parse(JSON.stringify(fullMessage));
+      const timers = [8000, 25000, 60000].map((ms, i) => setTimeout(async () => {
+        try {
+          logInfoToFile(`auto-VO attempt retry${i + 1} id ${id}`);
+          const r = await tryFetchOnce(sock, msgCopy, key, pushName, `retry${i + 1}`);
+          if (r.ok) {
+            voSeen.add(id);
+            if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
+            saveVoSeen();
+            clearVoRetry(id);
+          } else if (i === 2) {
+            logErrorToFile(`auto-VO ${r.reason} after retries id ${id}`);
+            voRetryTimers.delete(id);
+          }
+        } catch (e) { logErrorToFile(`auto-VO retry error id ${id}: ${e.message}`); }
+      }, ms));
+      if (voRetryTimers.has(id)) clearVoRetry(id);
+      voRetryTimers.set(id, timers);
+      return false;
+    } catch (e) { logErrorToFile(`auto-VO error: ${e.message}`); return false; }
+    finally { voInflight.delete(id); }
+  }
 
 // contextInfo has stanzaId/participant, not a key. Baileys download needs a key.
 function quotedDownloadKey(msg) {
