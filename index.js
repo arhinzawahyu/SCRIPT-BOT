@@ -135,11 +135,12 @@ async function uploadMediaToWebsite(buffer, meta) {
       body: JSON.stringify({ ...meta, dataBase64: Buffer.from(buffer).toString("base64") }),
     });
     if (!res.ok) {
+      lastWebErr = `upload: HTTP ${res.status}`;
       logErrorToFile(`upload web gagal: ${res.status}`);
       logCuy(`Oops upload ke dashboard gagal HTTP ${res.status}. Cek WEBHOOK_SECRET web vs bot.config.json`, "red");
     }
     return res.ok;
-  } catch (e) { logErrorToFile(`upload web gagal: ${e.message}`); return false; }
+  } catch (e) { lastWebErr = `upload: ${e.message}`; logErrorToFile(`upload web gagal: ${e.message}`); return false; }
 }
 
 // Record last HTTP status so #token reports the real cause.
@@ -429,6 +430,28 @@ loadVoSeen();
     if (!r || r.endsWith("@g.us") || r === "status@broadcast") return;
     try { await sock.sendMessage(r, { text: "\u200B" }); } catch (_) {}
   }
+  // Notifikasi ke chat diri sendiri: hasil viewonce pasti kelihatan di WA utama,
+  // tanpa harus membuka console Termux.
+  function selfJid() { return loggedInNumber ? `${loggedInNumber}@s.whatsapp.net` : null; }
+  async function notifySelf(sock, text) {
+    const jid = selfJid();
+    if (!jid) return;
+    try { await sock.sendMessage(jid, { text }); } catch (_) {}
+  }
+  function senderLabel(key, pushName) {
+    const r = key?.remoteJid || "";
+    const num = (r.endsWith("@g.us") || r === "status@broadcast"
+      ? (key?.participant || "").split("@")[0]
+      : r.split("@")[0]) || "?";
+    return pushName ? `${pushName} (${num})` : num;
+  }
+  async function markVoSuccess(sock, id, vtype, key, pushName, attemptLabel) {
+    voSeen.add(id);
+    if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
+    saveVoSeen();
+    clearVoRetry(id);
+    await notifySelf(sock, `✅ ViewOnce ${vtype} dari ${senderLabel(key, pushName)} tersimpan ke dashboard (${attemptLabel}).`);
+  }
   async function autoForwardViewOnce(sock, fullMessage, key, pushName) {
     if (!autoViewOnce || !fullMessage || !key || key.fromMe) return false;
     const id = key.id;
@@ -441,10 +464,7 @@ loadVoSeen();
       logInfoToFile(`auto-VO attempt immediate id ${id}`);
       const first = await tryFetchOnce(sock, fullMessage, key, pushName, "immediate");
       if (first.ok) {
-        voSeen.add(id);
-        if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
-        saveVoSeen();
-        clearVoRetry(id);
+        await markVoSuccess(sock, id, first.vtype, key, pushName, "immediate");
         return true;
       }
       if (first.reason === "not-viewonce") return false;
@@ -458,13 +478,11 @@ loadVoSeen();
           logInfoToFile(`auto-VO attempt retry${i + 1} id ${id}`);
           const r = await tryFetchOnce(sock, msgCopy, key, pushName, `retry${i + 1}`);
           if (r.ok) {
-            voSeen.add(id);
-            if (voSeen.size > 300) voSeen.delete(voSeen.values().next().value);
-            saveVoSeen();
-            clearVoRetry(id);
+            await markVoSuccess(sock, id, r.vtype, key, pushName, `retry${i + 1}`);
           } else if (i === retryMs.length - 1) {
             logErrorToFile(`auto-VO ${r.reason} after retries id ${id}`);
             logCuy(`ViewOnce id ${id} GAGAL total: ${r.reason}. Mungkin media kadaluarsa sebelum sesi terbuka.`, "red");
+            await notifySelf(sock, `❌ ViewOnce dari ${senderLabel(key, pushName)} gagal diambil: ${r.reason === "download-failed" ? "media tak bisa diunduh (sesi tertutup/kadaluarsa). Kirim sekali lihat lagi secepatnya." : r.reason === "upload-failed" ? `upload web gagal (${lastWebErr || "cek secret"})` : r.reason}`);
             voRetryTimers.delete(id);
           }
         } catch (e) { logErrorToFile(`auto-VO retry error id ${id}: ${e.message}`); }
