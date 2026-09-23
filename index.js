@@ -624,7 +624,8 @@ async function connectToWhatsApp() {
 
   const sock = makeWASocket({
     version,
-    logger: pino({ level: "silent" }),
+    // DIAG sementara: level error biar kegagalan dekripsi Baileys kelihatan di console
+    logger: pino({ level: "error" }),
     auth: state,
     printQRInTerminal: !useCode,
     defaultQueryTimeoutMs: undefined,
@@ -893,9 +894,22 @@ ViewOnce: reply + .vo atau kata pemicu (cth: ${triggerWords.slice(0,2).join("/")
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     try {
     lastActiveTime = Date.now();
+    const msg = messages[0];
+    // DIAG: catat semua wrapper viewonce walau type aneh (bukan notify)
+    if (msg?.message) {
+      const tkeys = Object.keys(msg.message);
+      const voish = tkeys.some((k) => k.includes("ViewOnce") || k === "ephemeralMessage" || k === "documentWithCaptionMessage" || k === "disappearingMessage");
+      if (voish) {
+        logCuy(`upsert type=${type} wrapper viewonce id ${msg.key?.id || "?"}`, "magenta");
+        try { await autoForwardViewOnce(sock, msg.message, msg.key, msg.pushName); } catch (_) {}
+      } else if (type !== "notify") {
+        logInfoToFile(`upsert non-notify type=${type} keys=${tkeys.join(",")} stub=${msg.messageStubType ?? ""}`);
+      }
+    } else if (msg) {
+      logInfoToFile(`upsert type=${type} tanpa message stub=${msg.messageStubType ?? ""}`);
+    }
     // notify only; append causes double download/decrypt
     if (type !== "notify") return;
-    const msg = messages[0];
     if (!msg.message) return;
 
     // ProtocolMessage REVOKE (type 0) = sender-deleted message.
