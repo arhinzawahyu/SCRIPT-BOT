@@ -456,9 +456,14 @@ loadVoSeen();
     if (!autoViewOnce || !fullMessage || !key || key.fromMe) return false;
     const id = key.id;
     if (!id || voSeen.has(id) || voInflight.has(id)) return false;
-    if (!findViewOnceNode(fullMessage)) return false;
     voInflight.add(id);
     try {
+      const node = findViewOnceNode(fullMessage);
+      if (!node) {
+        logCuy(`WRAPPER viewonce masuk id ${id} tp isi tak dikenali: ${Object.keys(fullMessage).join(",")}`, "yellow");
+        logInfoToFile(`viewonce wrapper unrecognized id ${id}: ${Object.keys(fullMessage).join(",")}`);
+        return false;
+      }
       logCuy(`ViewOnce masuk id ${id} -> coba ambil & kirim ke web...`, "magenta");
       await warmReceipt(sock, key); // panaskan sesi DULU sebelum download pertama
       logInfoToFile(`auto-VO attempt immediate id ${id}`);
