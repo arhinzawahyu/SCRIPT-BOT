@@ -1,0 +1,15 @@
+node_modules/
+sessions/
+sessions_backup/
+logs/
+*.log
+bot.config.json
+.env
+.env.local
+.env.*
+!.env.example
+.agents/
+skills-lock.json
+web/
+.vercel/
+.neon/

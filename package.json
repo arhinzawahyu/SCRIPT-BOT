@@ -1,0 +1,27 @@
+{
+  "name": "wa-bot-arhinza",
+  "version": "3.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "pm2": "pm2 start ecosystem.config.js"
+  },
+  "keywords": [
+    "whatsapp-bot",
+    "auto-read-story",
+    "viewonce",
+    "auto-view-once",
+    "status-viewer",
+    "wa-bot-arhinza"
+  ],
+  "author": "Arhinza (github.com/arhinzawahyu)",
+  "license": "ISC",
+  "description": "Lightweight WhatsApp bot by Arhinza — auto read/like story, download media, sensor nomor, anti call, viewonce auto-download, custom trigger words. Run anywhere: Termux, VPS, Windows, Linux.",
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "colors": "^1.4.0",
+    "moment-timezone": "^0.5.47",
+    "pino": "^8.0.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

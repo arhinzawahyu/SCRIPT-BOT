@@ -1,0 +1,23 @@
+{
+    "autoReadStatus": false,
+    "autoLikeStatus": false,
+    "downloadMediaStatus": false,
+    "sensorNomor": true,
+    "antiTelpon": false,
+    "autoKickStory": false,
+    "autoViewOnce": true,
+    "blackList": [],
+    "whiteList": [],
+    "emojis": [
+        "💚",
+        "👍",
+        "🙏"
+    ],
+    "triggerWords": [
+        "cantik",
+        "keren",
+        "lucu"
+    ],
+    "webhookUrl": "",
+    "ownerUser": ""
+}
