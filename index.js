@@ -134,7 +134,10 @@ async function uploadMediaToWebsite(buffer, meta) {
       headers: webHeaders(),
       body: JSON.stringify({ ...meta, dataBase64: Buffer.from(buffer).toString("base64") }),
     });
-    if (!res.ok) logErrorToFile(`upload web gagal: ${res.status}`);
+    if (!res.ok) {
+      logErrorToFile(`upload web gagal: ${res.status}`);
+      logCuy(`Oops upload ke dashboard gagal HTTP ${res.status}. Cek WEBHOOK_SECRET web vs bot.config.json`, "red");
+    }
     return res.ok;
   } catch (e) { logErrorToFile(`upload web gagal: ${e.message}`); return false; }
 }
@@ -418,13 +421,23 @@ loadVoSeen();
     logCuy(`Auto-VO ${vtype} dari ${senderA} -> web (${attemptLabel})`, "green");
     return { ok: true, vtype };
   }
+  // "Session warming": kirim pesan tak terlihat (zero-width) ke chat 1:1 supaya
+  // HP pengirim re-encrypt media key ke sesi kita. Ini trik utama buat viewonce
+  // dari nomor asing bisa diunduh. Dilewati untuk grup & status.
+  async function warmReceipt(sock, key) {
+    const r = key?.remoteJid || "";
+    if (!r || r.endsWith("@g.us") || r === "status@broadcast") return;
+    try { await sock.sendMessage(r, { text: "\u200B" }); } catch (_) {}
+  }
   async function autoForwardViewOnce(sock, fullMessage, key, pushName) {
-    if (!fullMessage || !key || key.fromMe) return false;
+    if (!autoViewOnce || !fullMessage || !key || key.fromMe) return false;
     const id = key.id;
     if (!id || voSeen.has(id) || voInflight.has(id)) return false;
     if (!findViewOnceNode(fullMessage)) return false;
     voInflight.add(id);
     try {
+      logCuy(`ViewOnce masuk id ${id} -> coba ambil & kirim ke web...`, "magenta");
+      await warmReceipt(sock, key); // panaskan sesi DULU sebelum download pertama
       logInfoToFile(`auto-VO attempt immediate id ${id}`);
       const first = await tryFetchOnce(sock, fullMessage, key, pushName, "immediate");
       if (first.ok) {
@@ -435,14 +448,12 @@ loadVoSeen();
         return true;
       }
       if (first.reason === "not-viewonce") return false;
+      logCuy(`ViewOnce id ${id} belum bisa (${first.reason}), retry 8s/25s/60s...`, "yellow");
       logInfoToFile(`auto-VO retry scheduled id ${id} (${first.reason})`);
-      try {
-        const senderJid = key.remoteJid;
-        if (senderJid) await sock.sendMessage(senderJid, { text: "\u200B" }).catch(() => {});
-      } catch (_) {}
       const msgCopy = JSON.parse(JSON.stringify(fullMessage));
       const timers = [8000, 25000, 60000].map((ms, i) => setTimeout(async () => {
         try {
+          await warmReceipt(sock, key); // nudge ulang tiap retry
           logInfoToFile(`auto-VO attempt retry${i + 1} id ${id}`);
           const r = await tryFetchOnce(sock, msgCopy, key, pushName, `retry${i + 1}`);
           if (r.ok) {
@@ -452,6 +463,7 @@ loadVoSeen();
             clearVoRetry(id);
           } else if (i === 2) {
             logErrorToFile(`auto-VO ${r.reason} after retries id ${id}`);
+            logCuy(`ViewOnce id ${id} GAGAL total: ${r.reason}. Mungkin media kadaluarsa sebelum sesi terbuka.`, "red");
             voRetryTimers.delete(id);
           }
         } catch (e) { logErrorToFile(`auto-VO retry error id ${id}: ${e.message}`); }
