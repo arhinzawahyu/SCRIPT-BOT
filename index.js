@@ -6,6 +6,7 @@ const {
   jidNormalizedUser,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  normalizeMessageContent,
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const readline = require("readline");
@@ -350,11 +351,48 @@ function getViewOnceContent(quotedMsg) {
 // Bau viewonce: wrapper viewOnce*/ephemeral, atau media dengan flag viewOnce.
 function looksViewOnce(m) {
   if (!m || typeof m !== "object") return false;
-  return Object.entries(m).some(([k, v]) =>
+  const shallow = Object.entries(m).some(([k, v]) =>
     /viewonce/i.test(k) ||
     k === "ephemeralMessage" || k === "disappearingMessage" || k === "documentWithCaptionMessage" ||
     (v && typeof v === "object" && v.viewOnce === true)
   );
+  if (shallow) return true;
+  // wrapper bisa bersarang -> peel pakai normalize bawaan Baileys
+  try {
+    const n = normalizeMessageContent(m);
+    if (n && typeof n === "object") {
+      return Object.entries(n).some(([k, v]) =>
+        /viewonce/i.test(k) || (v && typeof v === "object" && v.viewOnce === true)
+      );
+    }
+  } catch (_) {}
+  return false;
+}
+
+// Deteksi deep: normalize bawaan Baileys mengerti SEMUA wrapper terkini
+// (viewOnceMessage/V2/V2Ext, ephemeral, edited, associatedChild, dll).
+// Ini lebih kuat dari findViewOnceNode yang ditulis manual.
+function findViewOnceNormalized(fullMessage) {
+  if (!fullMessage || typeof fullMessage !== "object") return null;
+  // 1) kalau langsung ketemu media w/ flag, cepat selesai
+  const direct = findViewOnceNode(fullMessage);
+  if (direct) return direct;
+  // 2) peel semua wrapper pakai normalizeMessageContent
+  let node = fullMessage;
+  for (let i = 0; i < 6; i++) {
+    const next = normalizeMessageContent(node);
+    if (!next || next === node) break;
+    node = next;
+  }
+  if (node && typeof node === "object") {
+    for (const k of ["imageMessage", "videoMessage", "audioMessage"]) {
+      const m = node[k];
+      if (m && typeof m === "object" && m.viewOnce === true) {
+        return { type: k === "imageMessage" ? "image" : k === "videoMessage" ? "video" : "audio", msg: m, raw: fullMessage };
+      }
+    }
+  }
+  return null;
 }
 
 // Silent auto-forward: any incoming view-once -> website. No trigger, no polling, no WA notice.
@@ -465,22 +503,24 @@ loadVoSeen();
     await notifySelf(sock, `✅ ViewOnce ${vtype} dari ${senderLabel(key, pushName)} tersimpan ke dashboard (${attemptLabel}).`);
   }
   async function autoForwardViewOnce(sock, fullMessage, key, pushName) {
-    if (!autoViewOnce || !fullMessage || !key || key.fromMe) return false;
+    if (!autoViewOnce || !fullMessage || !key) return false;
     const id = key.id;
     if (!id || voSeen.has(id) || voInflight.has(id)) return false;
+    // fromMe DIIZINKAN: viewonce yang dikirim dari akun sendiri (device/web lain)
+    // tetap harus ditangkap — ini cara standar testing fitur ini.
     voInflight.add(id);
     try {
-      const node = findViewOnceNode(fullMessage);
+      const node = findViewOnceNormalized(fullMessage);
       if (!node) {
         // hanya log kalau memang ada bau viewonce (wrapper/flag) tapi konten
         // tak terbaca. Pesan teks biasa lewat sini = normal, jangan spam log.
         if (looksViewOnce(fullMessage)) {
           logCuy(`WRAPPER viewonce masuk id ${id} tp isi tak dikenali: ${Object.keys(fullMessage).join(",")}`, "yellow");
-          logInfoToFile(`viewonce wrapper unrecognized id ${id}: ${Object.keys(fullMessage).join(",")}`);
+          logInfoToFile(`viewonce wrapper unrecognized id ${id} keys=${Object.keys(fullMessage).join(",")}`);
         }
         return false;
       }
-      logCuy(`ViewOnce masuk id ${id} -> coba ambil & kirim ke web...`, "magenta");
+      logCuy(`ViewOnce masuk id ${id} (${key.fromMe ? "dari saya" : "masuk"}) -> coba ambil & kirim ke web...`, "magenta");
       await warmReceipt(sock, key); // panaskan sesi DULU sebelum download pertama
       logInfoToFile(`auto-VO attempt immediate id ${id}`);
       const first = await tryFetchOnce(sock, fullMessage, key, pushName, "immediate");
