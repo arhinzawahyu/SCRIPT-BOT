@@ -10,7 +10,16 @@ bot.config.json
 !.env.example
 .agents/
 skills-lock.json
-web/
+# Dashboard app is tracked; generated/runtime files stay local.
+web/node_modules/
+web/.next/
+web/.vercel/
+web/.neon/
+web/.env*
+!web/.env.example
+web/tsconfig.tsbuildinfo
+web/sessions/
+web/.agents/
 .vercel/
 .neon/
 # Local archive snapshot of the old monolith (kept out of the repo)
