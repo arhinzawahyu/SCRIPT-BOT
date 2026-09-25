@@ -170,11 +170,7 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
           <DoodleBuddy variant={KIND_VARIANT[kind]} />
         </div>
         <div className="archive-hero__body">
-          <div className="archive-header__context">
-            <span className={cn("live-indicator", live && "live-indicator--active")}><span aria-hidden="true" />{live ? "Live" : "Menghubungkan"}</span>
-            <span className="context-divider" aria-hidden="true" />
-            {KIND_LABEL[kind]}
-          </div>
+          <p className="archive-kind">{KIND_LABEL[kind]}</p>
           <h1 className="archive-hero__title">{splitTitle(title, KIND_ACCENT_WORD[kind])}</h1>
           <p className="archive-hero__desc">{description}</p>
           <div className="status-row" aria-label="Ringkasan status">

@@ -40,10 +40,6 @@ export default function PengaturanPage() {
             <DoodleBuddy variant="shield" />
           </div>
           <div className="archive-hero__body">
-            <div className="archive-header__context">
-              <span className="live-indicator live-indicator--active"><span aria-hidden="true" />Akses admin</span>
-              <span className="context-divider" aria-hidden="true" />Workspace private
-            </div>
             <h1 className="archive-hero__title">Pengaturan <em>Keamanan</em></h1>
             <p className="archive-hero__desc">Kelola kata sandi dan sesi dashboard private Anda. Semua perubahan tersimpan lokal &amp; terenkripsi.</p>
             <div className="status-row" aria-label="Ringkasan sesi">
