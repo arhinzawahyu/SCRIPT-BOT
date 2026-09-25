@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import Shell from "../Shell";
 import ActionButton from "@/components/ActionButton";
+import { DoodleBuddy } from "@/components/Doodles";
 import Field from "@/components/Field";
 
 const schema = z.object({
@@ -34,7 +35,23 @@ export default function PengaturanPage() {
   return (
     <Shell>
       <motion.div className="settings-page" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .4, ease: [0.22, 1, 0.36, 1] }}>
-        <header className="archive-header"><div className="archive-header__main"><div className="archive-header__context"><span className="live-indicator live-indicator--active"><span aria-hidden="true" />Akses admin</span><span className="context-divider" aria-hidden="true" />Workspace private</div><h1>Pengaturan</h1><p>Kelola kata sandi dan sesi dashboard private Anda.</p></div></header>
+        <header className="archive-hero">
+          <div className="archive-hero__mascot">
+            <DoodleBuddy title="Maskot keamanan — klik saya!" variant="shield" />
+          </div>
+          <div className="archive-hero__body">
+            <div className="archive-header__context">
+              <span className="live-indicator live-indicator--active"><span aria-hidden="true" />Akses admin</span>
+              <span className="context-divider" aria-hidden="true" />Workspace private
+            </div>
+            <h1 className="archive-hero__title">Pengaturan <em>Keamanan</em></h1>
+            <p className="archive-hero__desc">Kelola kata sandi dan sesi dashboard private Anda. Semua perubahan tersimpan lokal &amp; terenkripsi.</p>
+            <div className="archive-hero__pills">
+              <span className="token-pill token-pill--live"><span className="token-dot" aria-hidden="true" />Sesi aktif</span>
+              <span className="token-pill token-pill--dim"><LockKeyhole size={12} aria-hidden="true" />Cookie httpOnly</span>
+            </div>
+          </div>
+        </header>
         <div className="settings-grid">
           <section className="settings-panel">
             <div className="settings-panel__heading"><div className="settings-icon"><KeyRound size={19} aria-hidden="true" /></div><div><h2>Ganti password</h2><p>Password baru langsung digunakan untuk login berikutnya.</p></div></div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Download, FileText, Maximize2, Pencil, Play, Trash2, Volume2 } from "lucide-react";
+import { Download, FileText, Image as ImageIcon, Maximize2, Music4, Pencil, Play, Trash2, Volume2 } from "lucide-react";
 import type { ArchiveItem, MediaType } from "@/types/archive";
 import { formatBytes, formatDate, senderLabel, cn } from "@/lib/utils";
 import ActionButton from "./ActionButton";
@@ -13,9 +13,16 @@ const MEDIA_LABEL: Record<MediaType, string> = {
   audio: "Audio",
   text: "Teks",
 };
+const MEDIA_ICON: Record<MediaType, typeof FileText> = {
+  image: ImageIcon,
+  video: Play,
+  audio: Music4,
+  text: FileText,
+};
 
 type Props = {
   item: ArchiveItem;
+  index?: number;
   isText: boolean;
   isFresh: boolean;
   isEditing: boolean;
@@ -54,13 +61,15 @@ function MediaThumb({ item, onPreview }: { item: ArchiveItem; onPreview: () => v
   return <div className="archive-thumb archive-thumb--text" aria-hidden="true"><FileText size={24} /><span>Teks</span></div>;
 }
 
-export default function ArchiveCard({ item, isText, isFresh, isEditing, onPreview, onEdit, onDelete, onEditingDone }: Props) {
+export default function ArchiveCard({ item, index = 0, isText, isFresh, isEditing, onPreview, onEdit, onDelete, onEditingDone }: Props) {
+  const TypeIcon = MEDIA_ICON[item.media_type];
   return (
     <motion.article
       layout
-      initial={false}
-      animate={{ opacity: 1 }}
-      transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: .28, delay: Math.min(index % 12, 11) * 0.035, ease: [0.22, 1, 0.36, 1] }}
+      style={{ animationDelay: `${Math.min(index % 12, 11) * 45}ms` }}
       className={cn("archive-card", isFresh && "archive-card--fresh", isText && "archive-card--log")}
     >
       {isText ? (
@@ -73,7 +82,7 @@ export default function ArchiveCard({ item, isText, isFresh, isEditing, onPrevie
         <div className="archive-card__heading">
           <div className="archive-card__identity">
             <p className="archive-card__sender">{senderLabel(item)}</p>
-            <p className="archive-card__meta">{item.sender || "Nomor tidak tersedia"} {isText && <><span>·</span> {MEDIA_LABEL[item.media_type]}</>}</p>
+            <p className="archive-card__meta">{item.sender || "Nomor tidak tersedia"}{isText && <><span>·</span> {MEDIA_LABEL[item.media_type]}</>}</p>
           </div>
           {isFresh && <span className="new-badge"><span aria-hidden="true" />Baru</span>}
         </div>
@@ -83,7 +92,7 @@ export default function ArchiveCard({ item, isText, isFresh, isEditing, onPrevie
           <p className={cn("archive-card__caption", isText && "archive-card__caption--log", !item.caption && "archive-card__caption--empty")}>{item.caption || "Tanpa caption"}</p>
         )}
         <div className="archive-card__footer">
-          <span className="media-type"><span className="media-type__dot" />{MEDIA_LABEL[item.media_type]}</span>
+          <span className={cn("media-chip", `media-chip--${item.media_type}`)}><TypeIcon size={11} aria-hidden="true" />{MEDIA_LABEL[item.media_type]}</span>
           {item.size ? <span className="archive-card__size">{formatBytes(item.size)}</span> : <span>Metadata saja</span>}
         </div>
         <div className={cn("archive-card__actions", isText && "archive-card__actions--compact")}>

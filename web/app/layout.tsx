@@ -6,8 +6,12 @@ import MatrixRain from "./MatrixRain";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "WA Console",
-  description: "Private WhatsApp archive console.",
+  title: {
+    default: "WA Console — Private Archive",
+    template: "%s · WA Console",
+  },
+  description: "Private WhatsApp archive console. ViewOnce, Status, dan Pesan Dihapus — aman, live, single-admin.",
+  icons: { icon: "/icon.svg" },
 };
 
 export const viewport: Viewport = {

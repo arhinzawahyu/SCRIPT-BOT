@@ -4,12 +4,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, KeyRound, LoaderCircle, LockKeyhole, MessageCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import ActionButton from "@/components/ActionButton";
+import { LoginGuard } from "@/components/Doodles";
 import Field from "@/components/Field";
 
 const credentialsSchema = z.object({
@@ -21,12 +21,13 @@ type Credentials = z.infer<typeof credentialsSchema>;
 type TokenValues = z.infer<typeof tokenSchema>;
 
 export default function LoginPage() {
-  const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [waiting, setWaiting] = useState(false);
   const [notice, setNotice] = useState("");
   const credentials = useForm<Credentials>({ resolver: zodResolver(credentialsSchema), defaultValues: { username: "", password: "" } });
   const token = useForm<TokenValues>({ resolver: zodResolver(tokenSchema), defaultValues: { token: "" } });
+  const passwordValue = credentials.watch("password");
+  const hiding = step === 1 && passwordValue.length > 0;
 
   useEffect(() => {
     if (step !== 2 || !waiting) return;
@@ -107,10 +108,24 @@ export default function LoginPage() {
             <span className="login-private"><span className="security-dot" />Private access</span>
           </div>
 
+          {/* Penjaga doodle: menutup mata saat password diketik */}
+          <div className="login-stage">
+            <LoginGuard hiding={hiding} peeking={step === 2 && !waiting} />
+            <p className="login-stage__caption">
+              {step === 1
+                ? hiding
+                  ? <>Psst… <strong>saya tidak mengintip</strong> password kamu.</>
+                  : <>Halo! Saya <strong>jaga layar ini</strong>. Ketik password, saya tutup mata.</>
+                : waiting
+                  ? <>Tunggu ya… <strong>token meluncur</strong> ke WhatsApp kamu.</>
+                  : <>Token datang! <strong> Masukkan 6 digit</strong> di bawah.</>}
+            </p>
+          </div>
+
           <div className="login-progress" aria-label={`Tahap login ${step} dari 2`}>
-            <span className={step === 1 ? "login-progress__step login-progress__step--active" : "login-progress__step login-progress__step--done"}><b>01</b> Password</span>
+            <span className={step === 1 ? "login-progress__step login-progress__step--active" : "login-progress__step login-progress__step--done"}><span className="login-progress__dot" aria-hidden="true" /><b>01</b> Password</span>
             <span className="login-progress__line" aria-hidden="true" />
-            <span className={step === 2 ? "login-progress__step login-progress__step--active" : "login-progress__step"}><b>02</b> Token WhatsApp</span>
+            <span className={step === 2 ? "login-progress__step login-progress__step--active" : "login-progress__step"}><span className="login-progress__dot" aria-hidden="true" /><b>02</b> Token WhatsApp</span>
           </div>
 
           <AnimatePresence mode="wait">

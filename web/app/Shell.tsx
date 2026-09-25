@@ -1,16 +1,17 @@
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { AnimatePresence, motion } from "framer-motion";
-import { Archive, ChevronDown, CircleUserRound, Eye, FileText, LogOut, Settings, ShieldCheck, Trash2 } from "lucide-react";
+import { motion } from "framer-motion";
+import { ChevronDown, CircleUserRound, Eye, Images, LogOut, Settings, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { MiniBuddy } from "@/components/Doodles";
 
 const NAV = [
   { href: "/", label: "ViewOnce", short: "ViewOnce", icon: Eye },
-  { href: "/status", label: "Status", short: "Status", icon: Archive },
+  { href: "/status", label: "Status", short: "Status", icon: Images },
   { href: "/dihapus", label: "Pesan Dihapus", short: "Dihapus", icon: Trash2 },
 ] as const;
 
@@ -39,12 +40,17 @@ export default function Shell({ children }: ShellProps) {
         initial={false}
         aria-label="Navigasi utama"
       >
-        <div className="brand-lockup">
+        <div className="brand-lockup brand-lockup--v2">
           <div className="brand-symbol" aria-hidden="true"><span>WA</span></div>
           <div>
             <div className="brand-name">WA Console</div>
             <div className="brand-subtitle">Private archive</div>
           </div>
+        </div>
+
+        <div className="sidebar-mascot-row" aria-hidden="true">
+          <MiniBuddy />
+          <p><strong>Penjaga arsip aktif</strong>Semua file private &amp; terenkripsi sesi.</p>
         </div>
 
         <div className="sidebar-rule" />
@@ -60,11 +66,13 @@ export default function Shell({ children }: ShellProps) {
         </nav>
 
         <div className="sidebar-kicker sidebar-kicker--system">Sistem</div>
-        <Link href="/pengaturan" className={cn("sidebar-link", isSettings && "sidebar-link--active")} aria-current={isSettings ? "page" : undefined}>
-          <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
-          <span>Pengaturan</span>
-          {isSettings && <motion.span layoutId="nav-active" className="sidebar-link__indicator" aria-hidden="true" />}
-        </Link>
+        <nav className="sidebar-nav" aria-label="Sistem">
+          <Link href="/pengaturan" className={cn("sidebar-link", isSettings && "sidebar-link--active")} aria-current={isSettings ? "page" : undefined}>
+            <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
+            <span>Pengaturan</span>
+            {isSettings && <motion.span layoutId="nav-active" className="sidebar-link__indicator" aria-hidden="true" />}
+          </Link>
+        </nav>
 
         <div className="sidebar-spacer" />
         <div className="sidebar-security">

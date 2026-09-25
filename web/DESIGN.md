@@ -42,6 +42,15 @@ Desktop: sidebar 280px + content fluid. Mobile: top identity bar + content + bot
 
 Motion explains state changes, not decoration. Use Framer Motion for page/card enter, Radix for dialogs, GSAP for matrix columns. One live-item highlight lasts 2.2s. All motion respects `prefers-reduced-motion`.
 
+Animated tokens (v2): `--dur-instant/fast/mid/slow`, `--ease-spring/smooth`, `--glow-accent/success`, `--shadow-card/pop`, `--grid-dots`. Token pills (`.token-pill`, `--accent`, `--live`) pulse softly. Doodle sparkles/bob/twinkle loop; hero orb drifts 7s alternate. Card enter stagger max 11 steps x 35-45ms. All loops disabled under `prefers-reduced-motion`.
+
+## Doodles (v2)
+
+- `components/Doodles.tsx`: `DoodleBuddy` (shield/box/ghost/note), `LoginGuard` (hiding/peeking), `MiniBuddy` (sidebar).
+- Semua doodle SVG berkarakter: mata putih + pupil + highlight, pupil mengikuti pointer (clamped), kedip tiap ~2.2-5s, mulut idle/happy/shy, pipi, sparkle twinkle.
+- Interaktif: hover/focus = happy + lift; klik/Enter/Space = pop 900ms; `LoginGuard` menutup mata saat password diketik (anti-shoulder-surfing cue), tersenyum saat token siap.
+- Aksesibilitas: `role="img"` + `aria-label` + `title`, keyboard focusable, `useReducedMotion` mematikan float/pop, CSS mematikan semua loop doodle.
+
 ## Components
 
 - `ActionButton`: primary, secondary, ghost, danger; 44px minimum touch target.
