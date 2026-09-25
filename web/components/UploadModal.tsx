@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ImagePlus, LoaderCircle, LockKeyhole, Upload, X } from "lucide-react";
+import { ImagePlus, LoaderCircle, Upload, X } from "lucide-react";
 import type { ArchiveKind } from "@/types/archive";
 import ActionButton from "./ActionButton";
 import Modal from "./Modal";
@@ -107,7 +107,7 @@ export default function UploadModal({ kind, open, onOpenChange, onUploaded }: Pr
   }
 
   return (
-    <Modal open={open} onOpenChange={(next) => !next && close()} title="Unggah arsip" description="File tersimpan private di storage sesi ini.">
+    <Modal open={open} onOpenChange={(next) => !next && close()} title="Unggah arsip" description="File disimpan ke arsip ini.">
       <form className="upload-body" onSubmit={form.handleSubmit(submit)}>
         {!textOnly && (
           <div
@@ -163,7 +163,6 @@ export default function UploadModal({ kind, open, onOpenChange, onUploaded }: Pr
           />
           {form.formState.errors.caption && <span className="field-error">{form.formState.errors.caption.message}</span>}
         </div>
-        <p className="upload-note"><LockKeyhole size={12} aria-hidden="true" /> Hanya sesi ini yang bisa membuka file.</p>
         <div className="modal-actions">
           <ActionButton type="button" variant="ghost" onClick={close} disabled={busy}>Batal</ActionButton>
           <ActionButton type="submit" variant="primary" disabled={busy}>

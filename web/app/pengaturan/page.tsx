@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { CheckCircle2, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
+import { CheckCircle2, KeyRound, LockKeyhole } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -41,10 +41,7 @@ export default function PengaturanPage() {
           </div>
           <div className="archive-hero__body">
             <h1 className="archive-hero__title">Pengaturan <em>Keamanan</em></h1>
-            <p className="archive-hero__desc">Kelola kata sandi dan sesi dashboard private Anda. Semua perubahan tersimpan lokal &amp; terenkripsi.</p>
-            <div className="status-row" aria-label="Ringkasan sesi">
-              <span className="status-live status-live--on"><span className="token-dot" aria-hidden="true" />Sesi aktif</span>
-            </div>
+            <p className="archive-hero__desc">Ganti kata sandi untuk login berikutnya.</p>
           </div>
         </header>
         <div className="settings-grid">
@@ -57,9 +54,8 @@ export default function PengaturanPage() {
             </form>
           </section>
           <aside className="settings-notes">
-            <div className="settings-note"><ShieldCheck size={17} aria-hidden="true" /><div><strong>Session private</strong><span>Cookie sesi dibuat server-side setelah token WhatsApp terverifikasi.</span></div></div>
-            <div className="settings-note"><LockKeyhole size={17} aria-hidden="true" /><div><strong>Media tetap privat</strong><span>File hanya dilayani melalui endpoint ber-session, bukan URL storage publik.</span></div></div>
-            <div className="settings-note"><CheckCircle2 size={17} aria-hidden="true" /><div><strong>Perubahan lokal</strong><span>Password baru tidak pernah ditampilkan lagi setelah disimpan.</span></div></div>
+            <div className="settings-note"><LockKeyhole size={17} aria-hidden="true" /><div><strong>Password baru langsung berlaku</strong><span>Setelah disimpan, login berikutnya memakai password baru.</span></div></div>
+            <div className="settings-note"><CheckCircle2 size={17} aria-hidden="true" /><div><strong>Password tidak ditampilkan lagi</strong><span>Isi kolom tidak bisa dibaca setelah disimpan.</span></div></div>
           </aside>
         </div>
       </motion.div>

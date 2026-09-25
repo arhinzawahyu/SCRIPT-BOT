@@ -23,7 +23,7 @@ export default function Modal({ open, onOpenChange, title, description, children
           <div className="modal-header">
             <div>
               <Dialog.Title className="modal-title">{title}</Dialog.Title>
-              <Dialog.Description className="modal-description">{description || "Pratinjau arsip private."}</Dialog.Description>
+              {description ? <Dialog.Description className="modal-description">{description}</Dialog.Description> : null}
             </div>
             <Dialog.Close asChild>
               <button type="button" className="icon-button" aria-label="Tutup dialog">

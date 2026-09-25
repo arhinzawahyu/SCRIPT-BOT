@@ -2,7 +2,7 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { motion } from "framer-motion";
-import { ChevronDown, CircleUserRound, Eye, Images, LogOut, Settings, ShieldCheck, Trash2 } from "lucide-react";
+import { ChevronDown, CircleUserRound, Eye, Images, LogOut, Settings, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -43,12 +43,10 @@ export default function Shell({ children }: ShellProps) {
           <div className="brand-symbol" aria-hidden="true"><span>WA</span></div>
           <div>
             <div className="brand-name">WA Console</div>
-            <div className="brand-subtitle">Private archive</div>
           </div>
         </div>
 
         <div className="sidebar-rule" />
-        <div className="sidebar-kicker">Arsip</div>
         <nav className="sidebar-nav" aria-label="Arsip">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} className={cn("sidebar-link", isActive(href) && "sidebar-link--active")} aria-current={isActive(href) ? "page" : undefined}>
@@ -59,7 +57,6 @@ export default function Shell({ children }: ShellProps) {
           ))}
         </nav>
 
-        <div className="sidebar-kicker sidebar-kicker--system">Sistem</div>
         <nav className="sidebar-nav" aria-label="Sistem">
           <Link href="/pengaturan" className={cn("sidebar-link", isSettings && "sidebar-link--active")} aria-current={isSettings ? "page" : undefined}>
             <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
@@ -69,11 +66,6 @@ export default function Shell({ children }: ShellProps) {
         </nav>
 
         <div className="sidebar-spacer" />
-        <div className="sidebar-security">
-          <ShieldCheck size={16} aria-hidden="true" />
-          <span>Private session</span>
-          <span className="security-dot" aria-label="Aktif" />
-        </div>
         <DropdownMenu.Root open={accountOpen} onOpenChange={setAccountOpen}>
           <DropdownMenu.Trigger asChild>
             <button className="account-trigger" type="button" aria-label="Menu akun">
@@ -102,7 +94,6 @@ export default function Shell({ children }: ShellProps) {
           <span className="mobile-brand__mark">WA</span>
           <span>WA Console</span>
         </Link>
-        <span className="mobile-private"><span className="security-dot" /> Private</span>
       </div>
 
       <main id="main-content" className="console-main">

@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileSearch, LoaderCircle, LockKeyhole, RefreshCw, Search, SlidersHorizontal, Trash2, Upload, Volume2, X } from "lucide-react";
+import { LoaderCircle, RefreshCw, Search, SlidersHorizontal, Trash2, Upload, Volume2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { ArchiveItem, ArchiveKind, MediaType } from "@/types/archive";
@@ -160,32 +160,18 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
   const items = useMemo(() => archiveQuery.data?.pages.flatMap((page) => page.items) || [], [archiveQuery.data]);
   const total = archiveQuery.data?.pages[0]?.total ?? 0;
   const shown = items;
-  const activeFilterLabel = FILTERS.find((item) => item.value === filter)?.label;
 
   return (
     <motion.div className="archive-page" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .25, ease: [0.22, 1, 0.36, 1] }}>
-      {/* Hero: doodle, judul, pills status, total */}
+      {/* Hero: doodle, judul, hitungan */}
       <header className="archive-hero">
         <div className="archive-hero__mascot">
           <DoodleBuddy variant={KIND_VARIANT[kind]} />
         </div>
         <div className="archive-hero__body">
-          <p className="archive-kind">{KIND_LABEL[kind]}</p>
           <h1 className="archive-hero__title">{splitTitle(title, KIND_ACCENT_WORD[kind])}</h1>
           <p className="archive-hero__desc">{description}</p>
-          <div className="status-row" aria-label="Ringkasan status">
-            <span className={cn("status-live", live && "status-live--on")}>
-              <span className="token-dot" aria-hidden="true" />{live ? "Live" : "Menghubungkan"}
-            </span>
-            <span className="status-total"><strong>{archiveQuery.isPending ? "…" : total}</strong> arsip</span>
-            {activeFilterLabel && activeFilterLabel !== "Semua" && (
-              <span className="status-filter">Filter: {activeFilterLabel}</span>
-            )}
-          </div>
-        </div>
-        <div className="archive-hero__side" aria-label={`${total} arsip tersimpan`}>
-          <div className="archive-hero__bignum">{archiveQuery.isPending ? "…" : total}<small>Total arsip</small></div>
-          <span className="archive-hero__secure"><LockKeyhole size={12} aria-hidden="true" />Sesi private</span>
+          <p className="status-total"><strong>{archiveQuery.isPending ? "…" : total}</strong> arsip</p>
         </div>
       </header>
 
@@ -207,7 +193,6 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
 
       <div className="archive-statusline" aria-live="polite">
         <span>{archiveQuery.isFetching && !archiveQuery.isFetchingNextPage ? "Memuat arsip..." : `${shown.length} tampil${total > items.length ? ` dari ${total}` : ""}`}</span>
-        <span className="archive-statusline__context">{activeFilterLabel && activeFilterLabel !== "Semua" ? `Filter: ${activeFilterLabel}` : "Semua media"}{hasActiveFilter && query.trim() ? ` · “${query.trim()}”` : ""}</span>
         {archiveQuery.isFetchingNextPage && <span className="inline-loading"><LoaderCircle size={13} aria-hidden="true" /> Memuat halaman berikutnya</span>}
       </div>
       <p className="sr-only" aria-live="polite">{announcement}</p>
@@ -218,7 +203,6 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
 
       {shown.length > 0 && (
         <>
-          <div className="collection-line" aria-hidden="true">Koleksi, {shown.length} item</div>
           <div className={cn("archive-grid", isText && "archive-grid--logs")}>
             {shown.map((item, index) => (
               <ArchiveCard

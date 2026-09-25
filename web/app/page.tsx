@@ -7,7 +7,7 @@ export default function Home() {
       <ArchiveView
         kind="viewonce"
         title="ViewOnce"
-        description="Foto, video, dan audio sekali lihat. Tersimpan private; WhatsApp hanya menerima notifikasi."
+        description="Foto, video, dan audio sekali lihat yang dibalas ke bot."
         emptyTitle="No archived media found."
       />
     </Shell>
