@@ -82,8 +82,7 @@ export default function LoginPage() {
         return;
       }
       toast.success("Login berhasil");
-      router.push("/");
-      router.refresh();
+      window.location.href = "/";
     } catch {
       toast.error("Tidak dapat terhubung", { description: "Periksa koneksi lalu coba lagi." });
     }

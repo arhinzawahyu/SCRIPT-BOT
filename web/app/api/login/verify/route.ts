@@ -66,10 +66,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "server belum dikonfigurasi" }, { status: 500 });
   }
   const res = NextResponse.json({ ok: true });
+  const prod = process.env.NODE_ENV === "production";
   res.cookies.set("wa_sess", full, {
     httpOnly: true,
-    secure: true,
-    sameSite: "strict",
+    secure: prod,
+    sameSite: "lax",
     path: "/",
     maxAge: 12 * 60 * 60,
   });
