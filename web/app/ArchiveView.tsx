@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileSearch, LoaderCircle, LockKeyhole, RefreshCw, Search, SlidersHorizontal, Trash2, Volume2, X } from "lucide-react";
+import { FileSearch, LoaderCircle, LockKeyhole, RefreshCw, Search, SlidersHorizontal, Trash2, Upload, Volume2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { ArchiveItem, ArchiveKind, MediaType } from "@/types/archive";
@@ -13,6 +13,7 @@ import { useLiveFeed } from "./useLive";
 import ArchiveCard from "@/components/ArchiveCard";
 import ActionButton from "@/components/ActionButton";
 import Modal from "@/components/Modal";
+import UploadModal from "@/components/UploadModal";
 import { DoodleBuddy } from "@/components/Doodles";
 
 const PAGE_SIZE = 30;
@@ -115,6 +116,7 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
   const debouncedQuery = useDebounced(query, 300);
   const [freshId, setFreshId] = useState<number | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [uploadOpen, setUploadOpen] = useState(false);
   const isText = kind === "delete";
   const hasActiveFilter = Boolean(query.trim()) || filter !== "all";
 
@@ -198,6 +200,7 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nama, nomor, caption" aria-label="Cari arsip" />
             {query && <button type="button" className="search-clear" onClick={() => setQuery("")} aria-label="Hapus pencarian"><X size={15} aria-hidden="true" /></button>}
           </div>
+          <ActionButton type="button" size="sm" variant="primary" onClick={() => setUploadOpen(true)}><Upload size={14} aria-hidden="true" /> Unggah</ActionButton>
           {!isText && <div className="filter-group" role="group" aria-label="Filter jenis media">
             <SlidersHorizontal size={15} aria-hidden="true" />
             {FILTERS.map((item) => <button type="button" key={item.value} className={cn("filter-button", filter === item.value && "filter-button--active")} onClick={() => setFilter(item.value)} aria-pressed={filter === item.value}>{item.label}</button>)}
@@ -246,6 +249,8 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
           {preview && <motion.div key={preview.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}><Preview item={preview} /></motion.div>}
         </AnimatePresence>
       </Modal>
+
+      <UploadModal kind={kind} open={uploadOpen} onOpenChange={setUploadOpen} onUploaded={() => void queryClient.invalidateQueries({ queryKey: ["archive", kind] })} />
 
       <Modal open={Boolean(deleting)} onOpenChange={(open) => !open && !deleteMutation.isPending && setDeleting(null)} title="Hapus arsip?" description={deleting ? `${senderLabel(deleting)} · ${formatDate(deleting.created_at)}` : undefined} className="delete-modal">
         <div className="delete-modal__body"><div className="delete-modal__warning"><Trash2 size={18} aria-hidden="true" /><p>Metadata dan media akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.</p></div><div className="modal-actions"><ActionButton variant="ghost" onClick={() => setDeleting(null)} disabled={deleteMutation.isPending}>Batal</ActionButton><ActionButton variant="danger" loading={deleteMutation.isPending} onClick={() => deleting && deleteMutation.mutate(deleting.id)}>Hapus permanen</ActionButton></div></div>

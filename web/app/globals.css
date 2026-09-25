@@ -867,6 +867,23 @@ body::before {
 .settings-hero h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
 .settings-hero p { margin: 5px 0 0; color: var(--muted); font-size: 12.5px; }
 
+/* Form unggah: dropzone satu file + kolom data. Alasan: satu tugas
+   satu layar (R-05), pratinjau lokal sebelum kirim (R-27). */
+.upload-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 22px 22px; }
+.dropzone { border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: var(--bg-raised); transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease; }
+.dropzone--over { border-color: var(--accent); background: var(--accent-faint); }
+.dropzone__empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 18px; color: var(--muted); text-align: center; cursor: pointer; }
+.dropzone__empty svg { color: var(--accent); }
+.dropzone__empty strong { color: var(--text-soft); font-size: 13px; }
+.dropzone__empty span { color: var(--faint-readable); font-size: 11px; }
+.dropzone__file { display: flex; align-items: center; gap: 12px; padding: 12px; }
+.dropzone__file img, .dropzone__file video { width: 56px; height: 56px; flex: 0 0 auto; border-radius: 8px; object-fit: cover; background: #000; }
+.dropzone__file div { min-width: 0; flex: 1; }
+.dropzone__file strong { display: block; overflow: hidden; color: var(--text-soft); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.dropzone__file span { color: var(--faint-readable); font: 10px var(--font-geist-mono); }
+.field-area { min-height: 76px; padding: 10px 12px; resize: vertical; line-height: 1.55; }
+.upload-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--faint-readable); font-size: 11px; }
+
 /* — Skeleton shimmer v2 + stagger — */
 .archive-skeleton { position: relative; overflow: hidden; }
 .archive-skeleton::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255, 179, 138, .06) 50%, transparent 80%); animation: sweep 1.6s ease-in-out infinite; }
