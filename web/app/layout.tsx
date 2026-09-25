@@ -7,10 +7,10 @@ import Providers from "./providers";
 
 export const metadata: Metadata = {
   title: {
-    default: "WA Console — Private Archive",
+    default: "WA Console, Private Archive",
     template: "%s · WA Console",
   },
-  description: "Private WhatsApp archive console. ViewOnce, Status, dan Pesan Dihapus — aman, live, single-admin.",
+  description: "Private WhatsApp archive console. ViewOnce, Status, dan Pesan Dihapus. Aman, live, single-admin.",
   icons: { icon: "/icon.svg" },
 };
 

@@ -37,7 +37,7 @@ export default function PengaturanPage() {
       <motion.div className="settings-page" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .4, ease: [0.22, 1, 0.36, 1] }}>
         <header className="archive-hero">
           <div className="archive-hero__mascot">
-            <DoodleBuddy title="Maskot keamanan — klik saya!" variant="shield" />
+            <DoodleBuddy variant="shield" />
           </div>
           <div className="archive-hero__body">
             <div className="archive-header__context">
@@ -46,9 +46,8 @@ export default function PengaturanPage() {
             </div>
             <h1 className="archive-hero__title">Pengaturan <em>Keamanan</em></h1>
             <p className="archive-hero__desc">Kelola kata sandi dan sesi dashboard private Anda. Semua perubahan tersimpan lokal &amp; terenkripsi.</p>
-            <div className="archive-hero__pills">
-              <span className="token-pill token-pill--live"><span className="token-dot" aria-hidden="true" />Sesi aktif</span>
-              <span className="token-pill token-pill--dim"><LockKeyhole size={12} aria-hidden="true" />Cookie httpOnly</span>
+            <div className="status-row" aria-label="Ringkasan sesi">
+              <span className="status-live status-live--on"><span className="token-dot" aria-hidden="true" />Sesi aktif</span>
             </div>
           </div>
         </header>

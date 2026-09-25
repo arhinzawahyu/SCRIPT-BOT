@@ -7,7 +7,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { MiniBuddy } from "@/components/Doodles";
 
 const NAV = [
   { href: "/", label: "ViewOnce", short: "ViewOnce", icon: Eye },
@@ -46,11 +45,6 @@ export default function Shell({ children }: ShellProps) {
             <div className="brand-name">WA Console</div>
             <div className="brand-subtitle">Private archive</div>
           </div>
-        </div>
-
-        <div className="sidebar-mascot-row" aria-hidden="true">
-          <MiniBuddy />
-          <p><strong>Penjaga arsip aktif</strong>Semua file private &amp; terenkripsi sesi.</p>
         </div>
 
         <div className="sidebar-rule" />

@@ -111,15 +111,6 @@ export default function LoginPage() {
           {/* Penjaga doodle: menutup mata saat password diketik */}
           <div className="login-stage">
             <LoginGuard hiding={hiding} peeking={step === 2 && !waiting} />
-            <p className="login-stage__caption">
-              {step === 1
-                ? hiding
-                  ? <>Psst… <strong>saya tidak mengintip</strong> password kamu.</>
-                  : <>Halo! Saya <strong>jaga layar ini</strong>. Ketik password, saya tutup mata.</>
-                : waiting
-                  ? <>Tunggu ya… <strong>token meluncur</strong> ke WhatsApp kamu.</>
-                  : <>Token datang! <strong> Masukkan 6 digit</strong> di bawah.</>}
-            </p>
           </div>
 
           <div className="login-progress" aria-label={`Tahap login ${step} dari 2`}>

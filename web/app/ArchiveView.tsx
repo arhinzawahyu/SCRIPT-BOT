@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileSearch, Images, LoaderCircle, LockKeyhole, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Trash2, Volume2, X } from "lucide-react";
+import { FileSearch, LoaderCircle, LockKeyhole, RefreshCw, Search, SlidersHorizontal, Trash2, Volume2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { ArchiveItem, ArchiveKind, MediaType } from "@/types/archive";
@@ -69,10 +69,10 @@ function EmptyState({ title, kind, filtered }: { title: string; kind: ArchiveKin
         : "Belum ada log. Pesan yang dihapus akan tersimpan di sini bila anti-delete aktif.";
   return (
     <div className="empty-stage">
-      <DoodleBuddy title={filtered ? "Maskot kebingungan mencari arsip" : "Maskot menunggu arsip pertama"} variant={filtered ? "ghost" : KIND_VARIANT[kind]} shy={filtered} />
+      <DoodleBuddy variant={filtered ? "ghost" : KIND_VARIANT[kind]} shy={filtered} />
       <h2>{filtered ? "Arsip tidak ditemukan" : title}</h2>
       <p>{copy}</p>
-      <span className="empty-state__hint token-pill token-pill--dim"><span className="token-dot token-dot--peach" />Kiriman baru tampil otomatis tanpa refresh</span>
+      <p className="empty-stage__hint">Kiriman baru tampil otomatis tanpa refresh.</p>
     </div>
   );
 }
@@ -85,7 +85,7 @@ function Preview({ item }: { item: ArchiveItem }) {
       {item.media_type === "audio" && <div className="audio-preview"><Volume2 size={28} aria-hidden="true" /><audio src={`/api/items/${item.id}/file`} controls autoPlay /></div>}
       {item.media_type === "text" && <div className="preview-text-message">{item.caption || "Pesan tidak memiliki caption."}</div>}
       <div className="preview-details">
-        <div><span className="preview-label">Pengirim</span><strong>{senderLabel(item)}</strong><span>{item.sender || "—"}</span></div>
+        <div><span className="preview-label">Pengirim</span><strong>{senderLabel(item)}</strong><span>{item.sender || "Tidak ada nomor"}</span></div>
         <div><span className="preview-label">Waktu</span><strong>{formatDate(item.created_at)}</strong><span>{formatBytes(item.size)}</span></div>
       </div>
       {item.caption && item.media_type !== "text" && <p className="preview-caption">{item.caption}</p>}
@@ -162,10 +162,10 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
 
   return (
     <motion.div className="archive-page" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .25, ease: [0.22, 1, 0.36, 1] }}>
-      {/* HERO — doodle + judul + token pills + angka total */}
+      {/* Hero: doodle, judul, pills status, total */}
       <header className="archive-hero">
         <div className="archive-hero__mascot">
-          <DoodleBuddy title={`Maskot ${KIND_LABEL[kind]} — arahkan kursor, matanya mengikuti`} variant={KIND_VARIANT[kind]} />
+          <DoodleBuddy variant={KIND_VARIANT[kind]} />
         </div>
         <div className="archive-hero__body">
           <div className="archive-header__context">
@@ -175,20 +175,18 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
           </div>
           <h1 className="archive-hero__title">{splitTitle(title, KIND_ACCENT_WORD[kind])}</h1>
           <p className="archive-hero__desc">{description}</p>
-          <div className="archive-hero__pills" aria-label="Ringkasan status">
-            <span className={cn("token-pill", live ? "token-pill--live" : "token-pill--dim")}>
-              <span className="token-dot" aria-hidden="true" />{live ? "Live sync aktif" : "Menghubungkan…"}
+          <div className="status-row" aria-label="Ringkasan status">
+            <span className={cn("status-live", live && "status-live--on")}>
+              <span className="token-dot" aria-hidden="true" />{live ? "Live" : "Menghubungkan"}
             </span>
-            <span className="token-pill token-pill--accent">
-              <ShieldCheck size={13} aria-hidden="true" /><span className="token-count">{archiveQuery.isPending ? "—" : total}</span>&nbsp;arsip private
-            </span>
-            <span className="token-pill token-pill--dim">
-              <Images size={13} aria-hidden="true" />{activeFilterLabel && activeFilterLabel !== "Semua" ? `Filter: ${activeFilterLabel}` : "Semua media"}
-            </span>
+            <span className="status-total"><strong>{archiveQuery.isPending ? "…" : total}</strong> arsip</span>
+            {activeFilterLabel && activeFilterLabel !== "Semua" && (
+              <span className="status-filter">Filter: {activeFilterLabel}</span>
+            )}
           </div>
         </div>
         <div className="archive-hero__side" aria-label={`${total} arsip tersimpan`}>
-          <div className="archive-hero__bignum">{archiveQuery.isPending ? "—" : total}<small>Total arsip</small></div>
+          <div className="archive-hero__bignum">{archiveQuery.isPending ? "…" : total}<small>Total arsip</small></div>
           <span className="archive-hero__secure"><LockKeyhole size={12} aria-hidden="true" />Sesi private</span>
         </div>
       </header>
@@ -221,9 +219,7 @@ export default function ArchiveView({ kind, title, description, emptyTitle }: Pr
 
       {shown.length > 0 && (
         <>
-          <div className="doodle-divider" aria-hidden="true">
-            <FileSearch size={13} />Koleksi · {shown.length} item<FileSearch size={13} />
-          </div>
+          <div className="collection-line" aria-hidden="true">Koleksi, {shown.length} item</div>
           <div className={cn("archive-grid", isText && "archive-grid--logs")}>
             {shown.map((item, index) => (
               <ArchiveCard
