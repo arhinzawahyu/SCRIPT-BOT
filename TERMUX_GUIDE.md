@@ -11,6 +11,26 @@ node index.js        # run directly
 npm start
 ```
 
+### Termux: two extra steps
+
+`npm install` fails on Termux with `EALLOWGIT`, then with an SSH error. Both are
+about one dependency: Baileys pulls `libsignal` from a git repo over SSH, and
+Termux has no GitHub SSH key. The repo's `.npmrc` already allows the git fetch,
+so only the SSH rewrite is left:
+
+```bash
+pkg install git                                              # git is not in base Termux
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+npm install
+```
+
+The rewrite sends `git@github.com:...` to plain HTTPS, so no key is needed. If
+`npm install` still fails, check the cause:
+
+```bash
+npm -v          # EALLOWGIT means npm 12+; the .npmrc should have handled it
+```
+
 Login:
 - If `sessions/` does not exist yet, the bot asks for pairing code (type `y` then number `62xxxx`) or QR (`n`).
 - After login keep the terminal alive.
