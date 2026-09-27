@@ -96,27 +96,26 @@ The browser never receives `BLOB_READ_WRITE_TOKEN`, `BLOB_STORE_ID`, database UR
 
 ### Login flow
 
-1. `POST /api/login` validates username format and password against the single `admins` row.
-2. On success, create or reuse one unexpired `login_codes` row for the admin. Store only a SHA-256 verification hash and an AES-256-GCM sealed code for the bot relay. TTL: one hour.
-3. Set `wa_pre` as `HttpOnly`, `Secure`, `SameSite=Strict`; it grants access only to the OTP step.
+1. `POST /api/login` takes no credentials. There is no `admins` table and no username/password anywhere; the sole proof of ownership is the WhatsApp OTP.
+2. Create or reuse one unexpired `login_codes` row. Store only an HMAC-SHA256 verification hash (peppered with `SESSION_SECRET`, so a DB read alone cannot recover the code) and an AES-256-GCM sealed code for the bot relay. TTL: 10 minutes. A partial unique index enforces at most one outstanding challenge globally.
+3. Set `wa_chal` as `HttpOnly`, `Secure`, `SameSite=Strict`; it grants access only to the OTP step.
 4. The bot polls `/api/login/code` while connected. It sends the code to the configured owner and reports the exact code ID as sent.
 5. `POST /api/login/verify` checks the pre-session, code hash, expiry, unused state, and attempt count. Consume the code atomically on success.
 6. Create a database-backed session and set `wa_sess`; expire after 12 hours by default. Logout revokes the session row and clears the cookie. The pre-session cookie contains only the opaque `pre_session_id`; it is bound to the pending login-code row and is not a second authorization token.
 
 ### Session storage
 
-`web/lib/auth.ts` stops being the sole security boundary. Add a `sessions` table:
+`web/lib/auth.ts` is not the sole security boundary. The `sessions` table is authoritative; the cookie signature is only a fast pre-filter.
 
-- `id`: random 256-bit token ID, stored only as a SHA-256 hash.
-- `admin_id`: foreign key to `admins`.
-- `created_at`, `last_seen_at`, `expires_at`, `revoked_at`.
-- Optional `user_agent_hash` and IP prefix for settings/audit display; never store raw secrets.
+- `key`: primary key, `HMAC-SHA256(SESSION_SECRET, "session:" + sid)` — never the raw sid, so a DB read cannot produce a usable cookie.
+- `created_at`, `last_seen_at`, `expires_at`.
+- `ip`, `ua` for diagnostics. No `admin_id`: there is no user record.
 
-The cookie contains an opaque signed session identifier. Every protected page and API handler calls one DAL authorization function. Middleware may redirect for UX, but it is not the authorization check.
+The cookie is `login.<exp>.<sid>.<sig>`, signed with `SESSION_SECRET` and verified in constant time. Middleware (Edge, no DB access) checks only the signature and expiry, purely as a fast redirect filter. Every data API handler calls `requireSession()`, which does one atomic statement: confirm the row exists, slide the 12-hour idle timeout, and return the sid. A revoked or expired session has no row, so it reads nothing. Logout deletes the row, which kills stolen cookies too; `{ all: true }` is the kill switch.
 
-Use constant-time comparisons. Apply a distributed rate limiter at the trust boundary; the current process-local map is not sufficient for multiple Vercel instances. If no managed rate-limit store is available in the existing environment, use a Neon-backed fixed-window table with atomic SQL and document the single-admin traffic ceiling. Never weaken password or OTP checks to accommodate the limiter.
+Use constant-time comparisons. Apply a rate limiter at the trust boundary; the process-local map is not sufficient for multiple Vercel instances, so the durable lockout is the `login_codes.attempts` column (5 tries, enforced in the database). Never weaken the OTP check to accommodate the limiter.
 
-Login responses use generic errors. No password, OTP hash, token, or storage identifier is returned. The short-lived `wa_pre` cookie is the `pre_session_id`; another browser cannot submit a code created elsewhere.
+Login responses use generic errors. No OTP, hash, or session identifier is returned. The short-lived `wa_chal` cookie binds the code to the browser that requested it, so another browser cannot submit a code minted elsewhere. The bot relay (`/api/login/code`) authenticates with `LOGIN_RELAY_SECRET`, deliberately separate from `WEBHOOK_SECRET`: with one secret, anyone holding the ingest credential could pull the plaintext OTP and log in.
 
 ## 7. Data model and migrations
 

@@ -1,5 +1,5 @@
 {
     "webhookUrl": "",
     "webhookSecret": "",
-    "ownerUser": ""
+    "loginRelaySecret": ""
 }

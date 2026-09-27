@@ -4,7 +4,7 @@ const path = require("path");
 const configPath = path.join(__dirname, "..", "config.json");
 const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 
-// Dashboard credentials: local bot.config.json (gitignored). Env wins when set.
+// Dashboard webhook: local bot.config.json (gitignored). Env wins when set.
 let localCfg = {};
 try {
   const lp = path.join(__dirname, "..", "bot.config.json");
@@ -14,10 +14,6 @@ try {
 function cfgStr(v) { return typeof v === "string" ? v.trim().replace(/^"|"$/g, "") : ""; }
 function pickStr(...vals) { for (const v of vals) { const s = cfgStr(v); if (s) return s; } return ""; }
 const WEBHOOK_URL = pickStr(process.env.BOT_WEBHOOK_URL, localCfg.webhookUrl, config.webhookUrl);
-if (!cfgStr(process.env.BOT_OWNER_USER)) {
-  const o = pickStr(localCfg.ownerUser, config.ownerUser);
-  if (o) process.env.BOT_OWNER_USER = o;
-}
 // Secrets only from env/bot.config.json, never config.json (tracked in git).
 
 // Defaults (never overwrite existing values).

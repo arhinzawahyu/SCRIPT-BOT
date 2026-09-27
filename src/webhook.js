@@ -16,6 +16,16 @@ function webHeaders() {
   return { "Content-Type": "application/json", ...(s ? { "x-webhook-secret": s } : {}) };
 }
 
+// Secret relay token WA. Terpisah dari webhookSecret: kalau satu, siapa pun yang
+// punya secret ingest bisa menarik OTP plaintext dari /api/login/code dan masuk.
+// Env BOT_LOGIN_RELAY_SECRET, lalu bot.config.json (gitignored). Tanpa fallback
+// ke webhookSecret: server menolak relay yang tidak punya secret sendiri.
+function relaySecret() { return pickStr(process.env.BOT_LOGIN_RELAY_SECRET, localCfg.loginRelaySecret); }
+function relayHeaders() {
+  const s = relaySecret();
+  return { "Content-Type": "application/json", ...(s ? { "x-relay-secret": s } : {}) };
+}
+
 let lastWebErr = "";
 
 // Dashboard webhook MUST be public https. Reject http/local SSRF.
@@ -69,41 +79,40 @@ async function uploadMediaToWebsite(buffer, meta) {
 
 function noteWebErr(where, res) { lastWebErr = `${where}: HTTP ${res && res.status}`; logErrorToFile(`webhook ${where} gagal: HTTP ${res && res.status}`); }
 
-// Fetch newest unsent login token (u = optional username filter).
-async function fetchPendingLoginCode(u) {
+// Fetch newest unsent login token (token-only, tanpa username).
+async function fetchPendingLoginCode() {
   const base = webBase();
-  if (!base || !webSecret()) return null;
+  if (!base || !relaySecret()) return null;
   try {
-    const url = base + "/api/login/code" + (u ? `?username=${encodeURIComponent(u)}` : "");
-    const res = await fetch(url, { headers: webHeaders() });
+    const res = await fetch(base + "/api/login/code", { headers: relayHeaders() });
     if (!res.ok) { noteWebErr("ambil", res); return null; }
     const j = await res.json();
-    if (!j || !j.pending || !j.username || !j.code) return null;
+    if (!j || !j.pending || !j.code) return null;
     if (!/^\d{6}$/.test(String(j.code))) return null;
     return j;
   } catch (e) { lastWebErr = `ambil: ${e.message}`; logErrorToFile(`cek token login gagal: ${e.message}`); return null; }
 }
 
-async function markLoginCodeSent(username, id) {
+async function markLoginCodeSent(id) {
   const base = webBase();
-  if (!base || !webSecret()) return;
+  if (!base || !relaySecret()) return;
   try {
     await fetch(base + "/api/login/code", {
       method: "POST",
-      headers: webHeaders(),
-      body: JSON.stringify(id ? { username, id } : { username }),
+      headers: relayHeaders(),
+      body: JSON.stringify({ id: Number(id) || 0 }),
     });
   } catch (e) { logErrorToFile(`tandai token terkirim gagal: ${e.message}`); }
 }
 
-async function mintLoginCodes(u) {
+async function mintLoginCodes() {
   const base = webBase();
-  if (!base || !webSecret()) return false;
+  if (!base || !relaySecret()) return false;
   try {
     const res = await fetch(base + "/api/login/code", {
       method: "POST",
-      headers: webHeaders(),
-      body: JSON.stringify({ ...(u ? { username: u } : {}), mint: true }),
+      headers: relayHeaders(),
+      body: JSON.stringify({ mint: true }),
     });
     if (!res.ok) noteWebErr("mint", res);
     return res.ok;
@@ -112,7 +121,13 @@ async function mintLoginCodes(u) {
 
 function webDiag() {
   const s = webSecret();
-  return { base: webBase(), hasSecret: !!s, len: String(s).length, src: webSecretSrc(), lastErr: lastWebErr };
+  const r = relaySecret();
+  return {
+    base: webBase(), hasSecret: !!s, len: String(s).length, src: webSecretSrc(),
+    hasRelay: !!r, relayLen: String(r).length,
+    relaySrc: cfgStr(process.env.BOT_LOGIN_RELAY_SECRET) ? "env" : (r ? "bot.config.json" : ""),
+    lastErr: lastWebErr,
+  };
 }
 
 module.exports = {

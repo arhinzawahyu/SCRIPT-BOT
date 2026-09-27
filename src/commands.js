@@ -187,21 +187,20 @@ Termux 100% : cukup node index.js, auto backup ringan, tidak berat storage.`;
     }
 
     case "token": {
-      const who = String(process.env.BOT_OWNER_USER || "").trim().toLowerCase();
-      let pending = await fetchPendingLoginCode(who || undefined);
+      let pending = await fetchPendingLoginCode();
       if (!pending) {
-        await mintLoginCodes(who || undefined);
-        pending = await fetchPendingLoginCode(who || undefined);
+        await mintLoginCodes();
+        pending = await fetchPendingLoginCode();
       }
       if (!pending) {
         const d = webDiag();
         const sebab = !d.base ? "webhookUrl kosong/bukan https"
-          : !d.hasSecret ? "secret tidak terbaca (cek bot.config.json / env)"
-          : d.lastErr ? `server jawab ${d.lastErr} (secret salah bila 403, user salah bila 400)` : "tidak ada token valid";
-        await reply(`Belum bisa buatkan token.\n- URL: ${d.base || "-"}\n- Secret: ${d.hasSecret ? `ada (${d.len} char, dari ${d.src})` : "KOSONG"}\n- Sebab: ${sebab}\n\nCatatan: buka dashboard dan login tahap 1 dulu agar token dibuat, lalu ketik #token lagi.`);
+          : !d.hasRelay ? "loginRelaySecret tidak terbaca (butuh LOGIN_RELAY_SECRET di web + BOT_LOGIN_RELAY_SECRET di bot)"
+          : d.lastErr ? `server jawab ${d.lastErr} (secret salah bila 403)` : "tidak ada token valid";
+        await reply(`Belum bisa buatkan token.\n- URL: ${d.base || "-"}\n- Secret relay: ${d.hasRelay ? `ada (${d.relayLen} char, dari ${d.relaySrc})` : "KOSONG"}\n- Sebab: ${sebab}\n\nCatatan: buka dashboard lalu tekan "Minta token via WhatsApp", atau ketik #token lagi.`);
       } else {
-        await reply(`Kode login dashboard: *${pending.code}*\nBerlaku 1 jam. Masukkan di popup login.`);
-        await markLoginCodeSent(pending.username, Number(pending.id) || 0);
+        await reply(`Kode login dashboard: *${pending.code}*\nBerlaku 10 menit. Masukkan di halaman login.`);
+        await markLoginCodeSent(Number(pending.id) || 0);
       }
       if (pending) pending.code = "******";
       break;

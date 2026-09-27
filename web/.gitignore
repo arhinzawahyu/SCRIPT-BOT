@@ -1,7 +1,0 @@
-.neon
-.env.local
-.env
-tsconfig.tsbuildinfo
-.next
-.vercel
-!.env.example

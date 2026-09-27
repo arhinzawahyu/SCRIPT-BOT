@@ -68,24 +68,23 @@ function startHealthCheck() {
   }
 }
 
-// Login tokens: NO auto-mint, NO interval. Tokens are only created when a user
-// really logs in on the dashboard (step 1), or when the owner types #token.
+// Login tokens: NO auto-mint, NO interval. Tokens are only created when the
+// owner taps "Minta token" on the dashboard, or types #token.
 function startLoginCodePoll(s) {
   if (global._loginCodePoll) clearInterval(global._loginCodePoll);
   global._loginCodePoll = null;
   const pump = async () => {
     try {
       if (!s.user) return;
-      const who = String(process.env.BOT_OWNER_USER || "").trim().toLowerCase();
-      const pending = await fetchPendingLoginCode(who || undefined);
+      const pending = await fetchPendingLoginCode();
       if (!pending) return;
       const code = String(pending.code);
       pending.code = "******";
       await s.sendMessage(`${state.loggedInNumber}@s.whatsapp.net`, {
-        text: `Kode login dashboard: *${code}*\nBerlaku 1 jam. Jangan bagikan ke siapa pun.`,
+        text: `Kode login dashboard: *${code}*\nBerlaku 10 menit. Jangan bagikan ke siapa pun.`,
       });
-      await markLoginCodeSent(pending.username, Number(pending.id) || 0);
-      logCuy(`Token login dashboard dikirim ke WA pribadi untuk ${pending.username}`, "green");
+      await markLoginCodeSent(Number(pending.id) || 0);
+      logCuy("Token login dashboard dikirim ke WA pribadi", "green");
     } catch (e) {
       logErrorToFile(`kirim token login gagal: ${e.message}`);
     }

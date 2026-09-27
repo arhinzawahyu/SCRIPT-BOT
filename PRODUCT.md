@@ -27,7 +27,7 @@ Arsip WhatsApp privat dengan login dua tahap, data live, dan media privat. Bukan
 - Dashboard berjalan sebagai aplikasi web private.
 - Data masuk dari bot WhatsApp melalui webhook.
 - Media disimpan pada object storage; metadata pada database.
-- Login menggunakan username/password, lalu token 6 digit yang dikirim bot ke WhatsApp owner.
+- Login token-only: tanpa username, tanpa password. Satu-satunya bukti kepemilikan adalah token 6 digit yang dikirim bot ke WhatsApp owner, berlaku 10 menit.
 - Live update memakai polling endpoint yang sudah ada.
 - Pengguna bekerja pada desktop dan ponsel.
 
